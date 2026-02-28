@@ -39,6 +39,8 @@
   --sidebar-accent-foreground: rgba(255, 255, 255, 0.87);
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-ring: rgba(255, 255, 255, 0.3);
+  --sidebar-transition-duration: 250ms;
+  --sidebar-transition-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .dark {
