@@ -8,8 +8,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.routes.callers import router as callers_router
 from app.routes.calls import router as calls_router
 from app.routes.campaigns import router as campaigns_router
+from app.routes.dashboard import router as dashboard_router
+from app.routes.employees import router as employees_router
 from app.routes.health import router as health_router
 from app.twilio_voice.routes import router as twilio_router
 
@@ -37,6 +40,10 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(calls_router)
 app.include_router(campaigns_router)
+app.include_router(employees_router)
+app.include_router(callers_router)
+app.include_router(scripts_router)
+app.include_router(dashboard_router)
 app.include_router(twilio_router)
 
 

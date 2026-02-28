@@ -1,4 +1,4 @@
-# pyright: basic
+# pyright: basic, reportMissingImports=false
 """
 Twilio REST client — outbound call initiation with recording.
 
@@ -10,10 +10,17 @@ from twilio.rest import Client
 
 from app.config import settings
 
+_client: Client | None = None
 
-def _client() -> Client:
-    """Create an authenticated Twilio REST client from settings."""
-    return Client(settings.twilio_account_sid, settings.twilio_auth_token)
+
+def _get_client() -> Client:
+    """Create (or return cached) authenticated Twilio REST client."""
+    global _client
+    if _client is None:
+        if not settings.twilio_account_sid or not settings.twilio_auth_token:
+            raise ValueError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
+        _client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
+    return _client
 
 
 def make_outbound_call(
