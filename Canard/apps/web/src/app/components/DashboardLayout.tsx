@@ -45,11 +45,16 @@ export function DashboardLayout() {
       <Sidebar className="border-r-0" style={{ "--sidebar-width": "15rem" } as React.CSSProperties}>
         {/* Logo */}
         <SidebarHeader className="px-5 py-5">
-          <img
-            src={logoImg}
-            alt="Canard Security"
-            className="h-10 w-auto brightness-0 invert"
-          />
+          <div className="flex items-center gap-3">
+            <img
+              src={logoImg}
+              alt="Canard Security"
+              className="h-8 w-8 object-contain brightness-0 invert"
+            />
+            <span className="text-sm font-semibold text-white tracking-tight">
+              Canard Security
+            </span>
+          </div>
         </SidebarHeader>
 
         <Separator className="opacity-10" />
