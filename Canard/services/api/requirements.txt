@@ -7,3 +7,5 @@ python-dotenv>=1.0.0
 supabase>=2.0.0
 twilio>=9.0.0
 python-multipart>=0.0.9
+elevenlabs>=1.0.0
+websockets>=13.0  # ElevenLabs Realtime STT WebSocket client

@@ -5,6 +5,7 @@ import {
   Users,
   UserCircle,
   Phone,
+  Activity,
   ChevronRight,
   X,
 } from "lucide-react";
@@ -29,7 +30,7 @@ const navItems = [
   { to: "/campaigns", icon: PhoneCall, label: "Campaigns" },
   { to: "/callers", icon: UserCircle, label: "Caller Profiles" },
   { to: "/employees", icon: Users, label: "Employees" },
-  { to: "/calls", icon: Phone, label: "Call History" },
+  { to: "/monitoring", icon: Activity, label: "Call Monitoring" },
 ];
 
 function getBreadcrumb(pathname: string) {

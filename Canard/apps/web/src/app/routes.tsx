@@ -10,6 +10,7 @@ import { NotFound } from "./components/NotFound";
 import { LoginPage } from "./components/LoginPage";
 import { CompanySignUp } from "./components/CompanySignUp";
 import { ManagerAccountCreation } from "./components/ManagerAccountCreation";
+import { CallMonitoring } from "./components/CallMonitoring";
 
 export const router = createBrowserRouter([
   /* Auth pages — full-viewport, no dashboard shell */
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
       { path: "callers", Component: Callers },
       { path: "employees", Component: Employees },
       { path: "calls", Component: Calls },
+      { path: "monitoring", Component: CallMonitoring },
       { path: "*", Component: NotFound },
     ],
   },

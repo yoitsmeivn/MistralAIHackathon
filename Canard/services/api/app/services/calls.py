@@ -80,7 +80,20 @@ def update_call_status(call_id: str, status: str) -> None:
     queries.update_call(call_id, data)
 
 
-async def handle_call_completed(call_id: str, recording_url: str | None = None) -> None:
+async def handle_call_completed(
+    call_id: str,
+    recording_url: str | None = None,
+    recording_transcript: str | None = None,
+) -> None:
+    """
+    Finalize a completed call: persist state, end agent session, run analysis.
+
+    Args:
+        call_id: Internal call UUID.
+        recording_url: Twilio RecordingUrl if available.
+        recording_transcript: Pre-transcribed text from ElevenLabs STT if available.
+            When provided, analysis can use this instead of re-transcribing.
+    """
     update_data: dict[str, str] = {
         "status": "completed",
         "ended_at": datetime.now(timezone.utc).isoformat(),
@@ -92,10 +105,9 @@ async def handle_call_completed(call_id: str, recording_url: str | None = None) 
     await end_session(call_id)
 
     try:
-        await run_post_call_analysis(call_id)
+        await run_post_call_analysis(call_id, recording_transcript=recording_transcript)
     except Exception:
         LOGGER.exception("Post-call analysis failed for call %s", call_id)
-
 
 def get_or_create_call_for_webhook(twilio_call_sid: str) -> dict | None:
     return queries.get_call_by_sid(twilio_call_sid)

@@ -1,15 +1,7 @@
 # pyright: basic
 from __future__ import annotations
 
-CONSENT_INTRO = (
-    "Hello, this is a security awareness training exercise from your IT department. "
-    "This call may be recorded for training purposes. To consent and continue, press 1 "
-    "or say 'yes'. To opt out, press 2 or hang up."
-)
-
-CONSENT_CONFIRMED = "Thank you for participating. Let's begin the exercise."
-
-NO_CONSENT = "No problem. Thank you for your time. Goodbye."
+STREAM_GREETING = "Hello! Let's begin."
 
 
 def build_system_prompt(scenario_name: str, script_guidelines: str) -> str:
