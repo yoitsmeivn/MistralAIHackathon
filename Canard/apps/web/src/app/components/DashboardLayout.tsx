@@ -20,7 +20,7 @@ import {
   SidebarTrigger,
 } from "./ui/sidebar";
 import { Separator } from "./ui/separator";
-import logoImg from "../../../CanardTransparent.png";
+import logoImg from "../../../CanardSecurityTransparent.png";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", exact: true },
@@ -45,16 +45,11 @@ export function DashboardLayout() {
       <Sidebar className="border-r-0" style={{ "--sidebar-width": "15rem" } as React.CSSProperties}>
         {/* Logo */}
         <SidebarHeader className="px-5 py-5">
-          <div className="flex items-center gap-3">
-            <img
-              src={logoImg}
-              alt="Canard Security"
-              className="h-8 w-8 object-contain brightness-0 invert"
-            />
-            <span className="text-sm font-semibold text-white tracking-tight">
-              Canard Security
-            </span>
-          </div>
+          <img
+            src={logoImg}
+            alt="Canard Security"
+            className="w-full max-h-20 object-contain brightness-0 invert"
+          />
         </SidebarHeader>
 
         <Separator className="opacity-10" />
