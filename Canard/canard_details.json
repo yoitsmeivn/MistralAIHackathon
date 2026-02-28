@@ -1,0 +1,144 @@
+{
+  "tables": {
+    "organizations": {
+      "description": "The subscribing company. Everything is tenant-scoped under this.",
+      "fields": {
+        "id": "Unique identifier",
+        "name": "Company name (e.g. 'Acme Corp')",
+        "slug": "URL-friendly identifier ('acme-corp'), used for routing/subdomains",
+        "industry": "What sector they're in, useful for tailoring attack scenarios",
+        "plan_tier": "Billing tier that gates feature access (free, pro, enterprise)",
+        "max_employees": "Plan limit on number of employees",
+        "max_callers": "Plan limit on number of caller profiles",
+        "created_at": "Record creation timestamp",
+        "updated_at": "Last modification timestamp"
+      }
+    },
+    "users": {
+      "description": "Dashboard admins who log in and manage everything. They create callers, write scripts, build campaigns, and review results.",
+      "fields": {
+        "id": "Unique identifier",
+        "org_id": "Foreign key to the organization they belong to",
+        "email": "Login email, must be unique",
+        "password_hash": "Hashed auth credential",
+        "full_name": "Display name",
+        "role": "Permissions level (admin, manager, viewer)",
+        "is_active": "Soft delete / disable access without removing the record",
+        "last_login_at": "Tracks last login for engagement metrics",
+        "created_at": "Record creation timestamp",
+        "updated_at": "Last modification timestamp"
+      }
+    },
+    "employees": {
+      "description": "The people being tested. They don't log in — they just receive simulated scam calls.",
+      "fields": {
+        "id": "Unique identifier",
+        "org_id": "Foreign key to the organization they belong to",
+        "full_name": "Employee's full name",
+        "email": "Employee's email address",
+        "phone": "Phone number that gets called during tests",
+        "department": "Useful for targeting (e.g. finance dept gets CEO fraud tests, IT gets tech support pretexting)",
+        "job_title": "Employee's role at the company",
+        "risk_level": "Computed over time from call results (unknown, low, medium, high, critical)",
+        "notes": "Freeform context (e.g. 'failed 3 consecutive tests, scheduled for training')",
+        "is_active": "Soft delete",
+        "created_at": "Record creation timestamp",
+        "updated_at": "Last modification timestamp"
+      }
+    },
+    "callers": {
+      "description": "Fake attacker personas built by dashboard managers. Reusable across campaigns.",
+      "fields": {
+        "id": "Unique identifier",
+        "org_id": "Foreign key to the organization they belong to",
+        "created_by": "Foreign key to the user who created this persona",
+        "persona_name": "The fake identity (e.g. 'Mike from IT Support')",
+        "persona_role": "What they claim to be (e.g. 'Helpdesk Technician')",
+        "persona_company": "Spoofed company name they claim to represent",
+        "voice_profile": "JSONB blob for AI voice settings (accent, gender, tone, speed)",
+        "phone_number": "Outbound caller ID shown to the employee",
+        "attack_type": "Category of social engineering tactic (vishing, pretexting, authority_impersonation, urgency)",
+        "description": "Freeform notes about the persona",
+        "is_active": "Soft delete",
+        "created_at": "Record creation timestamp",
+        "updated_at": "Last modification timestamp"
+      }
+    },
+    "scripts": {
+      "description": "Reusable attack playbooks that tell the AI caller what to do during a call.",
+      "fields": {
+        "id": "Unique identifier",
+        "org_id": "Foreign key to the organization they belong to",
+        "created_by": "Foreign key to the user who created this script",
+        "name": "Human-readable label (e.g. 'Urgent CEO Wire Transfer')",
+        "attack_type": "Category tag matching the caller's type",
+        "difficulty": "How aggressive/sophisticated the script is (easy, medium, hard, expert)",
+        "system_prompt": "The actual AI instructions that drive the call behavior",
+        "objectives": "JSONB array of goals (e.g. ['get_password', 'get_mfa_code', 'get_transfer'])",
+        "escalation_steps": "JSONB array of ordered pressure tactics if the employee resists",
+        "description": "Freeform notes about the script",
+        "is_active": "Soft delete",
+        "created_at": "Record creation timestamp",
+        "updated_at": "Last modification timestamp"
+      }
+    },
+    "campaigns": {
+      "description": "A batch test run grouping multiple calls together. Contains many assignments of caller + script + employee combos.",
+      "fields": {
+        "id": "Unique identifier",
+        "org_id": "Foreign key to the organization they belong to",
+        "created_by": "Foreign key to the user who created this campaign",
+        "name": "Campaign name (e.g. 'Q1 Finance Dept Vishing Test')",
+        "description": "What this campaign is about",
+        "attack_vector": "Overall attack category for the campaign (phishing, pretexting, baiting, authority)",
+        "status": "Lifecycle state (draft, scheduled, in_progress, completed, cancelled)",
+        "scheduled_at": "When the campaign is planned to start",
+        "started_at": "When the campaign actually started",
+        "completed_at": "When the campaign finished",
+        "created_at": "Record creation timestamp",
+        "updated_at": "Last modification timestamp"
+      }
+    },
+    "campaign_assignments": {
+      "description": "The plan for a campaign. Each row is one specific caller + script + employee combo to execute. Unique constraint prevents duplicate combos within a campaign.",
+      "fields": {
+        "id": "Unique identifier",
+        "campaign_id": "Foreign key to the campaign this assignment belongs to",
+        "caller_id": "Foreign key to the caller persona for this assignment",
+        "script_id": "Foreign key to the attack script for this assignment",
+        "employee_id": "Foreign key to the target employee for this assignment",
+        "status": "Whether this assignment has been run yet (pending, scheduled, completed, skipped)",
+        "scheduled_at": "When this specific assignment is planned for",
+        "created_at": "Record creation timestamp"
+      }
+    },
+    "calls": {
+      "description": "The actual executed call. This is the analytics core — links a caller persona and script to an employee, stores the transcript, AI analysis, and risk scoring.",
+      "fields": {
+        "id": "Unique identifier",
+        "org_id": "Foreign key to the organization for tenant scoping",
+        "campaign_id": "Foreign key to the campaign this call belongs to (nullable for ad-hoc calls)",
+        "assignment_id": "Foreign key to the campaign assignment that triggered this call",
+        "caller_id": "Foreign key to the caller persona used",
+        "script_id": "Foreign key to the attack script used",
+        "employee_id": "Foreign key to the employee who was called",
+        "status": "Call lifecycle state (pending, ringing, in_progress, completed, failed, no_answer)",
+        "started_at": "When the call began",
+        "ended_at": "When the call ended",
+        "duration_seconds": "Total call length in seconds",
+        "phone_from": "Actual outbound number used",
+        "phone_to": "Employee's phone number that was dialed",
+        "recording_url": "Path to the audio file in Supabase storage bucket (e.g. 'recordings/{org_id}/{call_id}.wav')",
+        "transcript": "Plain text transcript of the full call",
+        "transcript_json": "Structured transcript with timestamps and speaker labels",
+        "risk_score": "AI-computed score from 0-100 indicating how vulnerable the employee was",
+        "employee_compliance": "Quick verdict on employee performance (passed, failed, partial)",
+        "flags": "JSONB array of specific failures (e.g. ['gave_password', 'confirmed_identity', 'transferred_funds'])",
+        "ai_summary": "AI-generated plain English summary of what happened in the call",
+        "sentiment_analysis": "JSONB tracking emotional state of both parties (e.g. {employee: 'nervous', caller: 'confident'})",
+        "created_at": "Record creation timestamp",
+        "updated_at": "Last modification timestamp"
+      }
+    }
+  }
+}
