@@ -1,7 +1,20 @@
 # pyright: basic
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+
+def _find_env_file() -> str | None:
+    """Walk up from this file's directory to find the .env file."""
+    current = Path(__file__).resolve().parent
+    for _ in range(10):
+        candidate = current / ".env"
+        if candidate.is_file():
+            return str(candidate)
+        current = current.parent
+    return None
 
 
 class Settings(BaseSettings):
@@ -30,7 +43,10 @@ class Settings(BaseSettings):
     # Server
     port: int = 8000
 
-    model_config = {"env_file": "../../.env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": _find_env_file(),
+        "env_file_encoding": "utf-8",
+    }
 
 
 settings = Settings()

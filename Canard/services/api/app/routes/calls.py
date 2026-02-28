@@ -4,22 +4,28 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from app.db import queries
-from app.models.analysis import Analysis
-from app.models.api import CallDetail, CallListItem, StartCallRequest, StartCallResponse
-from app.models.calls import Call
-from app.models.turns import Turn
+from app.models.api import CallEnriched, StartCallRequest, StartCallResponse
 from app.services.calls import start_call as svc_start_call
 
 router = APIRouter(prefix="/api/calls", tags=["calls"])
+
+
+def _format_duration(seconds: int | None) -> str:
+    if not seconds:
+        return ""
+    m, s = divmod(seconds, 60)
+    return f"{m}:{s:02d}"
 
 
 @router.post("/start", response_model=StartCallResponse)
 async def api_start_call(req: StartCallRequest) -> StartCallResponse:
     try:
         call = await svc_start_call(
-            participant_id=req.participant_id,
-            scenario_id=req.scenario_id,
+            employee_id=req.employee_id,
+            script_id=req.script_id,
+            caller_id=req.caller_id,
             campaign_id=req.campaign_id,
+            assignment_id=req.assignment_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -28,48 +34,88 @@ async def api_start_call(req: StartCallRequest) -> StartCallResponse:
 
     return StartCallResponse(
         call_id=call["id"],
-        twilio_call_sid=call.get("twilio_call_sid", ""),
         status=call.get("status", "pending"),
     )
 
 
-@router.get("/", response_model=list[CallListItem])
+@router.get("/", response_model=list[CallEnriched])
 async def api_list_calls(
-    participant_id: str | None = Query(None),
+    org_id: str = Query(...),
+    campaign_id: str | None = Query(None),
+    employee_id: str | None = Query(None),
     status: str | None = Query(None),
     limit: int = Query(50, le=200),
-) -> list[CallListItem]:
+) -> list[CallEnriched]:
     raw_calls = queries.list_calls(
-        participant_id=participant_id, status=status, limit=limit
+        org_id=org_id,
+        employee_id=employee_id,
+        campaign_id=campaign_id,
+        status=status,
+        limit=limit,
     )
-    items: list[CallListItem] = []
-    for call_row in raw_calls:
-        analysis = queries.get_analysis_for_call(call_row["id"])
+
+    # Build lookup dicts for names
+    employees = queries.list_employees(org_id, active_only=False)
+    callers = queries.list_callers(org_id, active_only=False)
+    campaigns = queries.list_campaigns(org_id)
+
+    emp_names = {e["id"]: e.get("full_name", "") for e in employees}
+    caller_names = {c["id"]: c.get("persona_name", "") for c in callers}
+    campaign_names = {c["id"]: c.get("name", "") for c in campaigns}
+
+    items: list[CallEnriched] = []
+    for c in raw_calls:
+        flags = c.get("flags") or []
+        if isinstance(flags, str):
+            flags = [flags]
+
         items.append(
-            CallListItem(
-                id=call_row["id"],
-                participant_id=call_row["participant_id"],
-                participant_name=None,
-                scenario_name=None,
-                status=call_row["status"],
-                risk_score=analysis["risk_score"] if analysis else None,
-                started_at=call_row.get("started_at"),
+            CallEnriched(
+                id=c["id"],
+                employee_name=emp_names.get(c.get("employee_id", ""), ""),
+                caller_name=caller_names.get(c.get("caller_id", ""), ""),
+                campaign_name=campaign_names.get(c.get("campaign_id", ""), ""),
+                status=c.get("status", "pending"),
+                started_at=c.get("started_at", "") or "",
+                duration=_format_duration(c.get("duration_seconds")),
+                duration_seconds=c.get("duration_seconds"),
+                risk_score=c.get("risk_score") or 0,
+                employee_compliance=c.get("employee_compliance", ""),
+                transcript=c.get("transcript", "") or "",
+                flags=flags,
+                ai_summary=c.get("ai_summary", "") or "",
             )
         )
     return items
 
 
-@router.get("/{call_id}", response_model=CallDetail)
-async def api_call_detail(call_id: str) -> CallDetail:
-    call_data = queries.get_call(call_id)
-    if not call_data:
+@router.get("/{call_id}", response_model=CallEnriched)
+async def api_call_detail(call_id: str) -> CallEnriched:
+    c = queries.get_call(call_id)
+    if not c:
         raise HTTPException(status_code=404, detail="Call not found")
 
-    turns_data = queries.get_turns_for_call(call_id)
-    analysis_data = queries.get_analysis_for_call(call_id)
+    # Resolve names
+    emp = queries.get_employee(c.get("employee_id", ""))
+    caller = queries.get_caller(c.get("caller_id", ""))
+    campaign = queries.get_campaign(c.get("campaign_id", ""))
 
-    return CallDetail(
-        call=Call(**call_data),
-        turns=[Turn(**turn) for turn in turns_data],
-        analysis=Analysis(**analysis_data) if analysis_data else None,
+    flags = c.get("flags") or []
+    if isinstance(flags, str):
+        flags = [flags]
+
+    return CallEnriched(
+        id=c["id"],
+        employee_name=emp.get("full_name", "") if emp else "",
+        caller_name=caller.get("persona_name", "") if caller else "",
+        campaign_name=campaign.get("name", "") if campaign else "",
+        status=c.get("status", "pending"),
+        started_at=c.get("started_at", "") or "",
+        duration=_format_duration(c.get("duration_seconds")),
+        duration_seconds=c.get("duration_seconds"),
+        risk_score=c.get("risk_score") or 0,
+        employee_compliance=c.get("employee_compliance", ""),
+        transcript=c.get("transcript", "") or "",
+        flags=flags,
+        ai_summary=c.get("ai_summary", "") or "",
     )
