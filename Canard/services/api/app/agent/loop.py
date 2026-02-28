@@ -11,9 +11,9 @@ from app.integrations.mistral import chat_completion
 LOGGER = logging.getLogger(__name__)
 
 
-async def start_session(call_id: str, scenario_id: str, system_prompt: str) -> None:
+async def start_session(call_id: str, script_id: str, system_prompt: str) -> None:
     session_store.create(
-        call_id=call_id, scenario_id=scenario_id, system_prompt=system_prompt
+        call_id=call_id, script_id=script_id, system_prompt=system_prompt
     )
 
 
