@@ -48,12 +48,14 @@ async def start_call(
 
     webhook_url = f"{settings.public_base_url}/twilio/voice"
     status_url = f"{settings.public_base_url}/twilio/status"
+    recording_url = f"{settings.public_base_url}/twilio/recording"
 
     try:
         twilio_sid = make_outbound_call(
             to_number=employee["phone"],
             webhook_url=webhook_url,
             status_callback_url=status_url,
+            recording_callback_url=recording_url,
         )
         queries.update_call(
             call_id,
@@ -80,6 +82,8 @@ def update_call_status(call_id: str, status: str) -> None:
     queries.update_call(call_id, data)
 
 
+# TODO(db): Re-integrate when post-call analysis pipeline is complete.
+# Currently the /twilio/status endpoint handles completion inline.
 async def handle_call_completed(
     call_id: str,
     recording_url: str | None = None,
@@ -109,5 +113,3 @@ async def handle_call_completed(
     except Exception:
         LOGGER.exception("Post-call analysis failed for call %s", call_id)
 
-def get_or_create_call_for_webhook(twilio_call_sid: str) -> dict | None:
-    return queries.get_call_by_sid(twilio_call_sid)
