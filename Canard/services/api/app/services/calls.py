@@ -14,25 +14,34 @@ LOGGER = logging.getLogger(__name__)
 
 
 async def start_call(
-    participant_id: str, scenario_id: str, campaign_id: str | None = None
+    employee_id: str,
+    script_id: str,
+    caller_id: str | None = None,
+    campaign_id: str | None = None,
+    assignment_id: str | None = None,
 ) -> dict:
-    participant = queries.get_participant(participant_id)
-    if not participant:
-        raise ValueError(f"Participant not found: {participant_id}")
-    if not participant.get("opt_in"):
-        raise ValueError(f"Participant has not opted in: {participant_id}")
+    employee = queries.get_employee(employee_id)
+    if not employee:
+        raise ValueError(f"Employee not found: {employee_id}")
+    if not employee.get("is_active"):
+        raise ValueError(f"Employee is not active: {employee_id}")
 
-    scenario = queries.get_scenario(scenario_id)
-    if not scenario:
-        raise ValueError(f"Scenario not found: {scenario_id}")
+    script = queries.get_script(script_id)
+    if not script:
+        raise ValueError(f"Script not found: {script_id}")
 
-    call_data: dict[str, str] = {
-        "participant_id": participant_id,
-        "scenario_id": scenario_id,
+    call_data: dict[str, str | None] = {
+        "org_id": employee["org_id"],
+        "employee_id": employee_id,
+        "script_id": script_id,
         "status": "pending",
     }
+    if caller_id:
+        call_data["caller_id"] = caller_id
     if campaign_id:
         call_data["campaign_id"] = campaign_id
+    if assignment_id:
+        call_data["assignment_id"] = assignment_id
 
     call = queries.create_call(call_data)
     call_id = call["id"]
@@ -42,14 +51,15 @@ async def start_call(
 
     try:
         twilio_sid = make_outbound_call(
-            to_number=participant["phone"],
+            to_number=employee["phone"],
             webhook_url=webhook_url,
             status_callback_url=status_url,
         )
         queries.update_call(
             call_id,
             {
-                "twilio_call_sid": twilio_sid,
+                "phone_from": settings.twilio_from_number,
+                "phone_to": employee["phone"],
                 "status": "ringing",
                 "started_at": datetime.now(timezone.utc).isoformat(),
             },

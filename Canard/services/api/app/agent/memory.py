@@ -8,10 +8,9 @@ from threading import RLock
 @dataclass
 class CallSession:
     call_id: str
-    scenario_id: str
+    script_id: str
     messages: list[dict] = field(default_factory=list)
     turn_count: int = 0
-    consented: bool = False
     max_turns: int = 10
 
 
@@ -20,10 +19,10 @@ class SessionStore:
         self._sessions: dict[str, CallSession] = {}
         self._lock = RLock()
 
-    def create(self, call_id: str, scenario_id: str, system_prompt: str) -> CallSession:
+    def create(self, call_id: str, script_id: str, system_prompt: str) -> CallSession:
         session = CallSession(
             call_id=call_id,
-            scenario_id=scenario_id,
+            script_id=script_id,
             messages=[{"role": "system", "content": system_prompt}],
         )
         with self._lock:
@@ -40,13 +39,6 @@ class SessionStore:
             if session is None:
                 raise KeyError(f"Session not found: {call_id}")
             session.messages.append({"role": role, "content": content})
-
-    def set_consented(self, call_id: str) -> None:
-        with self._lock:
-            session = self._sessions.get(call_id)
-            if session is None:
-                raise KeyError(f"Session not found: {call_id}")
-            session.consented = True
 
     def remove(self, call_id: str) -> None:
         with self._lock:
