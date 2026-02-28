@@ -1,0 +1,15 @@
+{
+  "name": "canard",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @canard/web dev",
+    "build:web": "pnpm --filter @canard/web build",
+    "build:shared": "pnpm --filter @canard/shared build",
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
