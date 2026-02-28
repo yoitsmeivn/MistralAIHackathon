@@ -47,7 +47,12 @@ async def serve_media(media_id: str) -> Response:
     audio = get_audio(media_id)
     if audio is None:
         return Response(content="Not found", status_code=404)
-    return Response(content=audio, media_type="audio/mpeg")
+    # audio/basic = mu-law 8 kHz (RFC 2046 §4.3) — the telephony default.
+    # ElevenLabs TTS outputs raw ulaw_8000 samples (no file headers).
+    # NOTE: Twilio <Play> may not support audio/basic via HTTP; this endpoint
+    # is mainly used by the fallback gather flow.  The primary streaming flow
+    # sends audio directly over the Media Stream WebSocket.
+    return Response(content=audio, media_type="audio/basic")
 
 
 if __name__ == "__main__":
