@@ -1,0 +1,91 @@
+# pyright: basic, reportMissingImports=false
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+
+from app.agent import end_session
+from app.config import settings
+from app.db import queries
+from app.services.analysis import run_post_call_analysis
+from app.twilio_voice.client import make_outbound_call
+
+LOGGER = logging.getLogger(__name__)
+
+
+async def start_call(
+    participant_id: str, scenario_id: str, campaign_id: str | None = None
+) -> dict:
+    participant = queries.get_participant(participant_id)
+    if not participant:
+        raise ValueError(f"Participant not found: {participant_id}")
+    if not participant.get("opt_in"):
+        raise ValueError(f"Participant has not opted in: {participant_id}")
+
+    scenario = queries.get_scenario(scenario_id)
+    if not scenario:
+        raise ValueError(f"Scenario not found: {scenario_id}")
+
+    call_data: dict[str, str] = {
+        "participant_id": participant_id,
+        "scenario_id": scenario_id,
+        "status": "pending",
+    }
+    if campaign_id:
+        call_data["campaign_id"] = campaign_id
+
+    call = queries.create_call(call_data)
+    call_id = call["id"]
+
+    webhook_url = f"{settings.public_base_url}/twilio/voice"
+    status_url = f"{settings.public_base_url}/twilio/status"
+
+    try:
+        twilio_sid = make_outbound_call(
+            to_number=participant["phone"],
+            webhook_url=webhook_url,
+            status_callback_url=status_url,
+        )
+        queries.update_call(
+            call_id,
+            {
+                "twilio_call_sid": twilio_sid,
+                "status": "ringing",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+    except Exception as exc:
+        LOGGER.exception("Failed to initiate Twilio call for %s", call_id)
+        queries.update_call(call_id, {"status": "failed"})
+        raise RuntimeError(f"Failed to start call: {exc}") from exc
+
+    updated_call = queries.get_call(call_id)
+    return updated_call or call
+
+
+def update_call_status(call_id: str, status: str) -> None:
+    data: dict[str, str] = {"status": status}
+    if status in ("completed", "failed", "no-answer", "busy"):
+        data["ended_at"] = datetime.now(timezone.utc).isoformat()
+    queries.update_call(call_id, data)
+
+
+async def handle_call_completed(call_id: str, recording_url: str | None = None) -> None:
+    update_data: dict[str, str] = {
+        "status": "completed",
+        "ended_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if recording_url:
+        update_data["recording_url"] = recording_url
+
+    queries.update_call(call_id, update_data)
+    await end_session(call_id)
+
+    try:
+        await run_post_call_analysis(call_id)
+    except Exception:
+        LOGGER.exception("Post-call analysis failed for call %s", call_id)
+
+
+def get_or_create_call_for_webhook(twilio_call_sid: str) -> dict | None:
+    return queries.get_call_by_sid(twilio_call_sid)
