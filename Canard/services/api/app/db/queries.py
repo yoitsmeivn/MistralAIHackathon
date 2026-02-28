@@ -23,52 +23,177 @@ def _execute(query: Any, context: str) -> Any:
         raise RuntimeError(f"Database query failed during {context}") from exc
 
 
-def create_participant(data: dict) -> dict:
+# ── Organizations ──
+
+
+def create_organization(data: dict) -> dict:
     result = _execute(
-        get_supabase().table("participants").insert(data), "create_participant"
+        get_supabase().table("organizations").insert(data), "create_organization"
     )
     row = _first_or_none(result)
     return row or {}
 
 
-def get_participant(id: str) -> dict | None:
+def get_organization(id: str) -> dict | None:
     result = _execute(
-        get_supabase().table("participants").select("*").eq("id", id).limit(1),
-        "get_participant",
+        get_supabase().table("organizations").select("*").eq("id", id).limit(1),
+        "get_organization",
     )
     return _first_or_none(result)
 
 
-def list_participants(active_only: bool = True) -> list[dict]:
+def get_organization_by_slug(slug: str) -> dict | None:
+    result = _execute(
+        get_supabase().table("organizations").select("*").eq("slug", slug).limit(1),
+        "get_organization_by_slug",
+    )
+    return _first_or_none(result)
+
+
+# ── Users ──
+
+
+def create_user(data: dict) -> dict:
+    result = _execute(get_supabase().table("users").insert(data), "create_user")
+    row = _first_or_none(result)
+    return row or {}
+
+
+def get_user(id: str) -> dict | None:
+    result = _execute(
+        get_supabase().table("users").select("*").eq("id", id).limit(1),
+        "get_user",
+    )
+    return _first_or_none(result)
+
+
+def get_user_by_email(email: str) -> dict | None:
+    result = _execute(
+        get_supabase().table("users").select("*").eq("email", email).limit(1),
+        "get_user_by_email",
+    )
+    return _first_or_none(result)
+
+
+def list_users(org_id: str, active_only: bool = True) -> list[dict]:
     query = (
-        get_supabase().table("participants").select("*").order("created_at", desc=True)
+        get_supabase()
+        .table("users")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at", desc=True)
     )
     if active_only:
-        query = query.eq("active", True)
-    result = _execute(query, "list_participants")
+        query = query.eq("is_active", True)
+    result = _execute(query, "list_users")
     return result if isinstance(result, list) else []
 
 
-def create_scenario(data: dict) -> dict:
-    result = _execute(get_supabase().table("scenarios").insert(data), "create_scenario")
+# ── Employees ──
+
+
+def create_employee(data: dict) -> dict:
+    result = _execute(
+        get_supabase().table("employees").insert(data), "create_employee"
+    )
     row = _first_or_none(result)
     return row or {}
 
 
-def get_scenario(id: str) -> dict | None:
+def get_employee(id: str) -> dict | None:
     result = _execute(
-        get_supabase().table("scenarios").select("*").eq("id", id).limit(1),
-        "get_scenario",
+        get_supabase().table("employees").select("*").eq("id", id).limit(1),
+        "get_employee",
     )
     return _first_or_none(result)
 
 
-def list_scenarios() -> list[dict]:
-    result = _execute(
-        get_supabase().table("scenarios").select("*").order("created_at", desc=True),
-        "list_scenarios",
+def list_employees(org_id: str, active_only: bool = True) -> list[dict]:
+    query = (
+        get_supabase()
+        .table("employees")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at", desc=True)
     )
+    if active_only:
+        query = query.eq("is_active", True)
+    result = _execute(query, "list_employees")
     return result if isinstance(result, list) else []
+
+
+def update_employee(id: str, data: dict) -> dict:
+    result = _execute(
+        get_supabase().table("employees").update(data).eq("id", id),
+        "update_employee",
+    )
+    row = _first_or_none(result)
+    return row or {}
+
+
+# ── Callers ──
+
+
+def create_caller(data: dict) -> dict:
+    result = _execute(get_supabase().table("callers").insert(data), "create_caller")
+    row = _first_or_none(result)
+    return row or {}
+
+
+def get_caller(id: str) -> dict | None:
+    result = _execute(
+        get_supabase().table("callers").select("*").eq("id", id).limit(1),
+        "get_caller",
+    )
+    return _first_or_none(result)
+
+
+def list_callers(org_id: str, active_only: bool = True) -> list[dict]:
+    query = (
+        get_supabase()
+        .table("callers")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at", desc=True)
+    )
+    if active_only:
+        query = query.eq("is_active", True)
+    result = _execute(query, "list_callers")
+    return result if isinstance(result, list) else []
+
+
+# ── Scripts ──
+
+
+def create_script(data: dict) -> dict:
+    result = _execute(get_supabase().table("scripts").insert(data), "create_script")
+    row = _first_or_none(result)
+    return row or {}
+
+
+def get_script(id: str) -> dict | None:
+    result = _execute(
+        get_supabase().table("scripts").select("*").eq("id", id).limit(1),
+        "get_script",
+    )
+    return _first_or_none(result)
+
+
+def list_scripts(org_id: str, active_only: bool = True) -> list[dict]:
+    query = (
+        get_supabase()
+        .table("scripts")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at", desc=True)
+    )
+    if active_only:
+        query = query.eq("is_active", True)
+    result = _execute(query, "list_scripts")
+    return result if isinstance(result, list) else []
+
+
+# ── Campaigns ──
 
 
 def create_campaign(data: dict) -> dict:
@@ -85,6 +210,63 @@ def get_campaign(id: str) -> dict | None:
     return _first_or_none(result)
 
 
+def list_campaigns(org_id: str) -> list[dict]:
+    result = _execute(
+        get_supabase()
+        .table("campaigns")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at", desc=True),
+        "list_campaigns",
+    )
+    return result if isinstance(result, list) else []
+
+
+def update_campaign(id: str, data: dict) -> dict:
+    result = _execute(
+        get_supabase().table("campaigns").update(data).eq("id", id),
+        "update_campaign",
+    )
+    row = _first_or_none(result)
+    return row or {}
+
+
+# ── Campaign Assignments ──
+
+
+def create_campaign_assignment(data: dict) -> dict:
+    result = _execute(
+        get_supabase().table("campaign_assignments").insert(data),
+        "create_campaign_assignment",
+    )
+    row = _first_or_none(result)
+    return row or {}
+
+
+def list_campaign_assignments(campaign_id: str) -> list[dict]:
+    result = _execute(
+        get_supabase()
+        .table("campaign_assignments")
+        .select("*")
+        .eq("campaign_id", campaign_id)
+        .order("created_at", desc=True),
+        "list_campaign_assignments",
+    )
+    return result if isinstance(result, list) else []
+
+
+def update_campaign_assignment(id: str, data: dict) -> dict:
+    result = _execute(
+        get_supabase().table("campaign_assignments").update(data).eq("id", id),
+        "update_campaign_assignment",
+    )
+    row = _first_or_none(result)
+    return row or {}
+
+
+# ── Calls ──
+
+
 def create_call(data: dict) -> dict:
     result = _execute(get_supabase().table("calls").insert(data), "create_call")
     row = _first_or_none(result)
@@ -99,18 +281,6 @@ def get_call(id: str) -> dict | None:
     return _first_or_none(result)
 
 
-def get_call_by_sid(twilio_call_sid: str) -> dict | None:
-    result = _execute(
-        get_supabase()
-        .table("calls")
-        .select("*")
-        .eq("twilio_call_sid", twilio_call_sid)
-        .limit(1),
-        "get_call_by_sid",
-    )
-    return _first_or_none(result)
-
-
 def update_call(id: str, data: dict) -> dict:
     result = _execute(
         get_supabase().table("calls").update(data).eq("id", id),
@@ -121,52 +291,45 @@ def update_call(id: str, data: dict) -> dict:
 
 
 def list_calls(
-    participant_id: str | None,
-    status: str | None,
+    org_id: str,
+    employee_id: str | None = None,
+    campaign_id: str | None = None,
+    status: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     query = (
         get_supabase()
         .table("calls")
         .select("*")
+        .eq("org_id", org_id)
         .order("created_at", desc=True)
         .limit(limit)
     )
-    if participant_id:
-        query = query.eq("participant_id", participant_id)
+    if employee_id:
+        query = query.eq("employee_id", employee_id)
+    if campaign_id:
+        query = query.eq("campaign_id", campaign_id)
     if status:
         query = query.eq("status", status)
     result = _execute(query, "list_calls")
     return result if isinstance(result, list) else []
 
 
-def create_turn(data: dict) -> dict:
-    result = _execute(get_supabase().table("turns").insert(data), "create_turn")
-    row = _first_or_none(result)
-    return row or {}
+def get_call_by_sid(twilio_call_sid: str) -> dict | None:
+    """Look up a call by its Twilio CallSid stored in phone_from metadata.
 
-
-def get_turns_for_call(call_id: str) -> list[dict]:
+    Note: the canonical schema does not include a twilio_call_sid column.
+    This helper performs a lookup via a Supabase RPC or filter that
+    the deployment must support (e.g. a generated column or index).
+    For now it falls back to scanning recent pending/ringing calls.
+    """
     result = _execute(
         get_supabase()
-        .table("turns")
+        .table("calls")
         .select("*")
-        .eq("call_id", call_id)
-        .order("turn_index"),
-        "get_turns_for_call",
-    )
-    return result if isinstance(result, list) else []
-
-
-def create_analysis(data: dict) -> dict:
-    result = _execute(get_supabase().table("analysis").insert(data), "create_analysis")
-    row = _first_or_none(result)
-    return row or {}
-
-
-def get_analysis_for_call(call_id: str) -> dict | None:
-    result = _execute(
-        get_supabase().table("analysis").select("*").eq("call_id", call_id).limit(1),
-        "get_analysis_for_call",
+        .eq("status", "ringing")
+        .order("created_at", desc=True)
+        .limit(1),
+        "get_call_by_sid",
     )
     return _first_or_none(result)
