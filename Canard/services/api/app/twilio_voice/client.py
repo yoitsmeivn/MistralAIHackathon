@@ -1,17 +1,33 @@
-# Download the helper library from https://www.twilio.com/docs/python/install
-import os
+# pyright: basic, reportMissingImports=false
+from __future__ import annotations
+
 from twilio.rest import Client
 
-# Find your Account SID and Auth Token at twilio.com/console
-# and set the environment variables. See http://twil.io/secure
-account_sid = os.environ["TWILIO_ACCOUNT_SID"]
-auth_token = os.environ["TWILIO_AUTH_TOKEN"]
-client = Client(account_sid, auth_token)
+from app.config import settings
 
-call = client.calls.create(
-    twiml="<Response><Say>Ahoy, World</Say></Response>",
-    to="+14155551212",
-    from_="+15017122661",
-)
+_client: Client | None = None
 
-print(call.sid)
+
+def _get_client() -> Client:
+    global _client
+    if _client is None:
+        if not settings.twilio_account_sid or not settings.twilio_auth_token:
+            raise ValueError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
+        _client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
+    return _client
+
+
+def make_outbound_call(
+    to_number: str,
+    webhook_url: str,
+    status_callback_url: str,
+) -> str:
+    """Place an outbound call via Twilio and return the CallSid."""
+    call = _get_client().calls.create(
+        to=to_number,
+        from_=settings.twilio_from_number,
+        url=webhook_url,
+        status_callback=status_callback_url,
+        status_callback_event=["initiated", "ringing", "answered", "completed"],
+    )
+    return call.sid
