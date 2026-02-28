@@ -202,3 +202,21 @@ export async function getCampaignCalls(campaignId: string): Promise<Call[]> {
   if (!campaign) return [];
   return calls.filter((c) => c.campaignName === campaign.name);
 }
+
+const deptColors = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
+
+export async function getRiskByDepartment(): Promise<RiskDistribution[]> {
+  await delay();
+  const deptMap = new Map<string, { failed: number; total: number }>();
+  for (const e of employees) {
+    const cur = deptMap.get(e.department) || { failed: 0, total: 0 };
+    cur.failed += e.failedTests;
+    cur.total += e.totalTests;
+    deptMap.set(e.department, cur);
+  }
+  return Array.from(deptMap.entries()).map(([dept, { failed, total }], i) => ({
+    name: dept,
+    value: total > 0 ? Math.round((failed / total) * 100) : 0,
+    fill: deptColors[i % deptColors.length],
+  }));
+}

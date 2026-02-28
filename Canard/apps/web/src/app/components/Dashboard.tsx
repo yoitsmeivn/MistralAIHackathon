@@ -35,6 +35,7 @@ import type {
 import {
   getDashboardStats,
   getRiskDistribution,
+  getRiskByDepartment,
   getCallsOverTime,
   getCampaigns,
   getEmployees,
@@ -64,6 +65,8 @@ const item = {
 export function Dashboard() {
   const [stats, setStats] = useState<DashboardStat[]>([]);
   const [riskDist, setRiskDist] = useState<RiskDistribution[]>([]);
+  const [riskByDept, setRiskByDept] = useState<RiskDistribution[]>([]);
+  const [riskPivot, setRiskPivot] = useState<"level" | "department">("level");
   const [callsTime, setCallsTime] = useState<CallsOverTime[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -73,12 +76,14 @@ export function Dashboard() {
     Promise.all([
       getDashboardStats(),
       getRiskDistribution(),
+      getRiskByDepartment(),
       getCallsOverTime(),
       getCampaigns(),
       getEmployees(),
-    ]).then(([s, r, c, camp, emp]) => {
+    ]).then(([s, r, rd, c, camp, emp]) => {
       setStats(s);
       setRiskDist(r);
+      setRiskByDept(rd);
       setCallsTime(c);
       setCampaigns(camp.filter((c) => c.status !== "draft").slice(0, 3));
       setEmployees(
@@ -271,19 +276,43 @@ export function Dashboard() {
               <CardTitle className="text-sm font-medium">
                 Risk Distribution
               </CardTitle>
+              <CardAction>
+                <div className="flex rounded-lg bg-muted p-0.5">
+                  <button
+                    onClick={() => setRiskPivot("level")}
+                    className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                      riskPivot === "level"
+                        ? "bg-background text-foreground shadow-sm font-medium"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Risk Level
+                  </button>
+                  <button
+                    onClick={() => setRiskPivot("department")}
+                    className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                      riskPivot === "department"
+                        ? "bg-background text-foreground shadow-sm font-medium"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Department
+                  </button>
+                </div>
+              </CardAction>
             </CardHeader>
             <CardContent>
               <div className="h-40 mb-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={riskDist}
+                      data={riskPivot === "level" ? riskDist : riskByDept}
                       innerRadius={45}
                       outerRadius={65}
                       paddingAngle={4}
                       dataKey="value"
                     >
-                      {riskDist.map((entry, i) => (
+                      {(riskPivot === "level" ? riskDist : riskByDept).map((entry, i) => (
                         <Cell key={i} fill={entry.fill} />
                       ))}
                     </Pie>
@@ -294,13 +323,16 @@ export function Dashboard() {
                         boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
                         fontSize: 13,
                       }}
-                      formatter={(value: number) => [`${value}%`, ""]}
+                      formatter={(value: number) => [
+                        `${value}%`,
+                        riskPivot === "department" ? "Fail Rate" : "",
+                      ]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
               <div className="flex flex-wrap gap-3 justify-center">
-                {riskDist.map((r) => (
+                {(riskPivot === "level" ? riskDist : riskByDept).map((r) => (
                   <div
                     key={r.name}
                     className="flex items-center gap-1.5 text-xs text-muted-foreground"
