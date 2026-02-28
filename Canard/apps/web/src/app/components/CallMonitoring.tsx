@@ -171,9 +171,9 @@ function LiveCallTranscript({ callId }: { callId: string }) {
   }, [callId]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-160px)]">
+    <div className="flex flex-col h-[calc(100vh-160px)] px-2">
       {/* Connection State Header */}
-      <div className={`flex items-center justify-between px-4 py-3 rounded-lg border mb-2 transition-colors duration-500 ${
+      <div className={`flex items-center justify-between px-5 py-4 rounded-xl border mt-2 mb-4 mx-2 transition-colors duration-500 ${
         isConnected ? "bg-emerald-500/10 border-emerald-500/20" : "bg-amber-500/10 border-amber-500/20"
       }`}>
         <div className="flex items-center gap-3">
@@ -194,7 +194,7 @@ function LiveCallTranscript({ callId }: { callId: string }) {
       </div>
 
       {/* Transcript Scroll Area */}
-      <div className="flex-1 overflow-y-auto space-y-5 pr-3 pb-6 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-6 px-4 pb-8 custom-scrollbar">
         {messages.length === 0 && isConnected && (
           <p className="text-sm text-center text-muted-foreground italic">Waiting for audio...</p>
         )}
@@ -239,8 +239,8 @@ function PastCallTranscript({ callId }: { callId: string }) {
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-160px)]">
-      <div className="flex flex-col gap-1 pb-4 mb-2 border-b">
+    <div className="flex flex-col h-[calc(100vh-160px)] px-2">
+      <div className="flex flex-col gap-1 pb-4 mb-4 mt-2 px-2 border-b">
         <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
           <History className="size-4 text-muted-foreground" />
           Call Recording & Transcript
@@ -248,7 +248,7 @@ function PastCallTranscript({ callId }: { callId: string }) {
         <p className="text-xs text-muted-foreground tracking-wide font-mono">CALL ID: {callId}</p>
       </div>
       
-      <div className="flex-1 overflow-y-auto space-y-5 pr-3 pb-6 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-6 px-4 pb-8 custom-scrollbar">
         {mockTranscript.map((msg, i) => {
           const isTarget = msg.sender === 'employee';
           return (
