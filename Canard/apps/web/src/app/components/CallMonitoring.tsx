@@ -171,36 +171,53 @@ function LiveCallTranscript({ callId }: { callId: string }) {
   }, [callId]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)]">
+    <div className="flex flex-col h-[calc(100vh-160px)]">
       {/* Connection State Header */}
-      <div className="flex items-center gap-2 pb-4 border-b">
-        <div className="relative flex h-3 w-3">
-          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isConnected ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
-          <span className={`relative inline-flex rounded-full h-3 w-3 ${isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+      <div className={`flex items-center justify-between px-4 py-3 rounded-lg border mb-2 transition-colors duration-500 ${
+        isConnected ? "bg-emerald-500/10 border-emerald-500/20" : "bg-amber-500/10 border-amber-500/20"
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className="relative flex h-3 w-3">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+              isConnected ? 'bg-emerald-400' : 'bg-amber-400'
+            }`}></span>
+            <span className={`relative inline-flex rounded-full h-3 w-3 ${
+              isConnected ? 'bg-emerald-500' : 'bg-amber-500'
+            }`}></span>
+          </div>
+          <span className={`text-sm font-semibold tracking-wide ${
+            isConnected ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"
+          }`}>
+            {isConnected ? "LIVE CONNECTION ACTIVE" : "CONNECTING TO FEED..."}
+          </span>
         </div>
-        <span className="text-sm font-medium text-muted-foreground">
-          {isConnected ? "Live Feed Active" : "Connecting to live feed..."}
-        </span>
       </div>
 
       {/* Transcript Scroll Area */}
-      <div className="flex-1 overflow-y-auto pt-6 space-y-4 pr-2">
+      <div className="flex-1 overflow-y-auto space-y-5 pr-3 pb-6 custom-scrollbar">
         {messages.length === 0 && isConnected && (
           <p className="text-sm text-center text-muted-foreground italic">Waiting for audio...</p>
         )}
         
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.sender === 'employee' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-              msg.sender === 'employee' 
-                ? 'bg-[#252a39] text-white rounded-tr-sm' 
-                : 'bg-muted text-foreground rounded-tl-sm'
-            }`}>
-              <p className="text-xs opacity-70 mb-1">{msg.sender === 'employee' ? 'Target' : 'AI Agent'}</p>
-              <p>{msg.text}</p>
+        {messages.map((msg, i) => {
+          const isTarget = msg.sender === 'employee';
+          return (
+            <div key={i} className={`flex w-full ${isTarget ? 'justify-end' : 'justify-start'}`}>
+              <div className={`flex flex-col max-w-[85%] ${isTarget ? 'items-end' : 'items-start'}`}>
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 px-1">
+                  {isTarget ? 'Target' : 'AI Agent'}
+                </span>
+                <div className={`px-4 py-3 text-sm shadow-sm transition-all ${
+                  isTarget 
+                    ? 'bg-[#252a39] text-white rounded-2xl rounded-tr-sm' 
+                    : 'bg-muted/80 border border-black/5 text-foreground rounded-2xl rounded-tl-sm'
+                }`}>
+                  <p className="leading-relaxed">{msg.text}</p>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -222,25 +239,35 @@ function PastCallTranscript({ callId }: { callId: string }) {
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)]">
-      <div className="pb-4 border-b">
-        <h3 className="font-medium text-foreground">Call Recording & Transcript</h3>
-        <p className="text-xs text-muted-foreground">Call ID: {callId}</p>
+    <div className="flex flex-col h-[calc(100vh-160px)]">
+      <div className="flex flex-col gap-1 pb-4 mb-2 border-b">
+        <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+          <History className="size-4 text-muted-foreground" />
+          Call Recording & Transcript
+        </h3>
+        <p className="text-xs text-muted-foreground tracking-wide font-mono">CALL ID: {callId}</p>
       </div>
       
-      <div className="flex-1 overflow-y-auto pt-6 space-y-4 pr-2">
-        {mockTranscript.map((msg, i) => (
-          <div key={i} className={`flex ${msg.sender === 'employee' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-              msg.sender === 'employee' 
-                ? 'bg-[#252a39] text-white rounded-tr-sm' 
-                : 'bg-muted text-foreground rounded-tl-sm'
-            }`}>
-              <p className="text-xs opacity-70 mb-1">{msg.sender === 'employee' ? 'Employee' : 'AI Agent'}</p>
-              <p>{msg.text}</p>
+      <div className="flex-1 overflow-y-auto space-y-5 pr-3 pb-6 custom-scrollbar">
+        {mockTranscript.map((msg, i) => {
+          const isTarget = msg.sender === 'employee';
+          return (
+            <div key={i} className={`flex w-full ${isTarget ? 'justify-end' : 'justify-start'}`}>
+              <div className={`flex flex-col max-w-[85%] ${isTarget ? 'items-end' : 'items-start'}`}>
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 px-1">
+                  {isTarget ? 'Target' : 'AI Agent'}
+                </span>
+                <div className={`px-4 py-3 text-sm shadow-sm transition-all ${
+                  isTarget 
+                    ? 'bg-[#252a39] text-white rounded-2xl rounded-tr-sm' 
+                    : 'bg-muted/80 border border-black/5 text-foreground rounded-2xl rounded-tl-sm'
+                }`}>
+                  <p className="leading-relaxed">{msg.text}</p>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
