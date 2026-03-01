@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from app.auth.middleware import OptionalUser
 from app.db import queries
 from app.models.api import CampaignListItem
 
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
 class CreateCampaignRequest(BaseModel):
     name: str
-    org_id: str
+    org_id: str | None = None
     created_by: str | None = None
     description: str | None = None
     attack_vector: str | None = None
@@ -54,21 +55,33 @@ def _enrich_campaigns(campaigns: list[dict], all_calls: list[dict]) -> list[Camp
 
 
 @router.post("/")
-async def api_create_campaign(req: CreateCampaignRequest) -> dict:
+async def api_create_campaign(req: CreateCampaignRequest, user: OptionalUser) -> dict:
     from app.services.campaigns import create_campaign
+
+    resolved_org_id = user["org_id"] if user else req.org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     return create_campaign(
         name=req.name,
-        org_id=req.org_id,
-        created_by=req.created_by,
+        org_id=resolved_org_id,
+        created_by=req.created_by or (user["id"] if user else None),
         description=req.description,
         attack_vector=req.attack_vector,
     )
 
 
 @router.get("/", response_model=list[CampaignListItem])
-async def api_list_campaigns(org_id: str = Query(...)) -> list[CampaignListItem]:
-    campaigns = queries.list_campaigns(org_id)
-    all_calls = queries.list_calls(org_id=org_id, limit=10000)
+async def api_list_campaigns(
+    user: OptionalUser,
+    org_id: str | None = Query(None),
+) -> list[CampaignListItem]:
+    resolved_org_id = user["org_id"] if user else org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    campaigns = queries.list_campaigns(resolved_org_id)
+    all_calls = queries.list_calls(org_id=resolved_org_id, limit=10000)
     return _enrich_campaigns(campaigns, all_calls)
 
 

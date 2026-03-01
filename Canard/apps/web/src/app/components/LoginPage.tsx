@@ -1,15 +1,37 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import { motion } from "motion/react";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
 import { Button } from "./ui/button";
+import { useAuth } from "../contexts/AuthContext";
 import logoImg from "../../../CanardSecurityTransparent.png";
 
 export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      await signIn(email, password);
+      navigate("/", { replace: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Sign in failed";
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="min-h-svh flex items-center justify-center bg-gradient-to-br from-[#f4f4f4] via-[#eaeaea] to-[#e0dfd8] px-4">
@@ -51,8 +73,14 @@ export function LoginPage() {
             <p className="text-sm text-muted-foreground mt-1">Sign in to your dashboard</p>
           </div>
 
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
           {/* Form */}
-          <form onSubmit={(e) => e.preventDefault()} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="login-email">Email</Label>
               <Input
@@ -60,6 +88,9 @@ export function LoginPage() {
                 type="email"
                 placeholder="you@company.com"
                 autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
               />
             </div>
 
@@ -79,6 +110,9 @@ export function LoginPage() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
                 />
                 <button
                   type="button"
@@ -99,10 +133,11 @@ export function LoginPage() {
 
             <Button
               type="submit"
+              disabled={submitting}
               className="w-full bg-[#252a39] text-white hover:bg-[#252a39]/90 h-10"
             >
               <LogIn className="size-4 mr-2" />
-              Sign In
+              {submitting ? "Signing in..." : "Sign In"}
             </Button>
           </form>
 
@@ -115,15 +150,6 @@ export function LoginPage() {
                 className="text-foreground font-medium hover:underline underline-offset-4"
               >
                 Register your company
-              </Link>
-            </p>
-            <p className="mt-2">
-              Need a manager account?{" "}
-              <Link
-                to="/create-account"
-                className="text-foreground font-medium hover:underline underline-offset-4"
-              >
-                Request access
               </Link>
             </p>
           </div>
