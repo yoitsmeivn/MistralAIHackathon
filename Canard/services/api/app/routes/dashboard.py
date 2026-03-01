@@ -164,11 +164,15 @@ _POSITIVE_FLAGS = {
 
 @router.get("/smart-widgets", response_model=SmartWidgetsResponse)
 async def api_smart_widgets(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> SmartWidgetsResponse:
-    employees = queries.list_employees(org_id, active_only=False)
-    all_calls = queries.list_calls(org_id=org_id, limit=10000)
-    campaigns = queries.list_campaigns(org_id)
+    resolved_org_id = user["org_id"] if user else org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    employees = queries.list_employees(resolved_org_id, active_only=False)
+    all_calls = queries.list_calls(org_id=resolved_org_id, limit=10000)
+    campaigns = queries.list_campaigns(resolved_org_id)
 
     emp_lookup: dict[str, dict] = {e["id"]: e for e in employees}
     camp_lookup: dict[str, dict] = {c["id"]: c for c in campaigns}
