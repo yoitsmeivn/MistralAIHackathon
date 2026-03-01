@@ -38,11 +38,13 @@ def _risk_color(score: int) -> tuple[int, int, int]:
 
 
 def _compliance_label(compliance: str) -> str:
-    if compliance == "failed":
+    if compliance in ("full_compliance", "significant_compliance", "failed"):
         return "Failed"
-    if compliance == "partial":
+    if compliance in ("partial_compliance", "partial"):
         return "Partial"
-    return "Passed"
+    if compliance in ("strong_resistance", "moderate_resistance", "passed"):
+        return "Passed"
+    return "Partial"
 
 
 def _safe_text(text: str) -> str:

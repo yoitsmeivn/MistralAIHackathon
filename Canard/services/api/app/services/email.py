@@ -22,11 +22,13 @@ def _risk_color(score: int) -> str:
 
 def _compliance_label(compliance: str) -> tuple[str, str]:
     """Return (label, color) for compliance status."""
-    if compliance == "failed":
+    if compliance in ("full_compliance", "significant_compliance", "failed"):
         return "Failed", "#ef4444"
-    if compliance == "partial":
+    if compliance in ("partial_compliance", "partial"):
         return "Partial", "#f59e0b"
-    return "Passed", "#22c55e"
+    if compliance in ("strong_resistance", "moderate_resistance", "passed"):
+        return "Passed", "#22c55e"
+    return "Partial", "#f59e0b"
 
 
 def _build_flags_html(flags: list[str]) -> str:

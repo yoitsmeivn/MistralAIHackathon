@@ -1705,7 +1705,12 @@ async def _send_audit_email_safe(call_id: str, eval_result: dict) -> None:
 
         flags = call.get("flags") or []
         if isinstance(flags, str):
-            flags = [flags]
+            try:
+                flags = json.loads(flags)
+                if not isinstance(flags, list):
+                    flags = [flags]
+            except (json.JSONDecodeError, ValueError):
+                flags = [flags]
 
         campaign_name = campaign.get("name", "") if campaign else ""
         employee_name = employee.get("full_name", "")
