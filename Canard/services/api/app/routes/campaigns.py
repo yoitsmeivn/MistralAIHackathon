@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.auth.middleware import OptionalUser
 from app.db import queries
-from app.models.api import CampaignListItem
+from app.models.api import CampaignListItem, ScriptListItem
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -83,6 +83,86 @@ async def api_list_campaigns(
     campaigns = queries.list_campaigns(resolved_org_id)
     all_calls = queries.list_calls(org_id=resolved_org_id, limit=10000)
     return _enrich_campaigns(campaigns, all_calls)
+
+
+class UpdateCampaignRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    attack_vector: str | None = None
+    status: str | None = None
+    scheduled_at: str | None = None
+
+
+@router.patch("/{campaign_id}")
+async def api_update_campaign(
+    campaign_id: str, req: UpdateCampaignRequest, user: OptionalUser
+) -> dict:
+    campaign = queries.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    updates = req.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    return queries.update_campaign(campaign_id, updates)
+
+
+@router.delete("/{campaign_id}")
+async def api_delete_campaign(campaign_id: str, user: OptionalUser) -> dict:
+    campaign = queries.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    queries.delete_campaign(campaign_id)
+    return {"status": "deleted"}
+
+
+class LaunchCampaignRequest(BaseModel):
+    script_id: str | None = None
+    caller_id: str | None = None
+    department: str | None = None
+    employee_ids: list[str] | None = None
+
+
+@router.get("/{campaign_id}/scripts", response_model=list[ScriptListItem])
+async def api_get_campaign_scripts(campaign_id: str) -> list[ScriptListItem]:
+    campaign = queries.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    rows = queries.list_scripts_by_campaign(campaign_id)
+    return [
+        ScriptListItem(
+            id=s["id"],
+            name=s.get("name", ""),
+            attack_type=s.get("attack_type", ""),
+            difficulty=s.get("difficulty", "medium"),
+            system_prompt=s.get("system_prompt", ""),
+            objectives=s.get("objectives", []),
+            escalation_steps=s.get("escalation_steps", []),
+            description=s.get("description", ""),
+            is_active=s.get("is_active", True),
+            created_at=s.get("created_at", ""),
+        )
+        for s in rows
+    ]
+
+
+@router.post("/{campaign_id}/launch")
+async def api_launch_campaign(
+    campaign_id: str, req: LaunchCampaignRequest, user: OptionalUser
+) -> dict:
+    from app.services.campaigns import launch_campaign
+
+    try:
+        return await launch_campaign(
+            campaign_id=campaign_id,
+            script_id=req.script_id,
+            caller_id=req.caller_id,
+            department=req.department,
+            employee_ids=req.employee_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{campaign_id}", response_model=CampaignListItem)

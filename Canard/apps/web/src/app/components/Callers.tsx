@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import type { Caller } from "../types";
-import { getCallers } from "../services/api";
+import { getCallers, createCaller, deleteCaller } from "../services/api";
 
 const container = {
   hidden: { opacity: 0 },
@@ -55,31 +55,52 @@ export function Callers() {
     description: "",
   });
 
+  const loadCallers = () => {
+    setLoading(true);
+    getCallers()
+      .then((data) => {
+        setCallers(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  };
+
   useEffect(() => {
-    getCallers().then((data) => {
-      setCallers(data);
-      setLoading(false);
-    });
+    loadCallers();
   }, []);
 
-  const handleCreateCaller = () => {
-    const newCaller: Caller = {
-      id: String(callers.length + 1),
-      ...formData,
-      isActive: true,
-      totalCalls: 0,
-      avgSuccessRate: 0,
-    };
-    setCallers([...callers, newCaller]);
-    setShowModal(false);
-    setFormData({
-      personaName: "",
-      personaRole: "",
-      personaCompany: "",
-      phoneNumber: "",
-      attackType: "",
-      description: "",
-    });
+  const handleCreateCaller = async () => {
+    try {
+      await createCaller({
+        persona_name: formData.personaName,
+        persona_role: formData.personaRole || undefined,
+        persona_company: formData.personaCompany || undefined,
+        phone_number: formData.phoneNumber || undefined,
+        attack_type: formData.attackType || undefined,
+        description: formData.description || undefined,
+      });
+      setShowModal(false);
+      setFormData({
+        personaName: "",
+        personaRole: "",
+        personaCompany: "",
+        phoneNumber: "",
+        attackType: "",
+        description: "",
+      });
+      loadCallers();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to create caller");
+    }
+  };
+
+  const handleDeleteCaller = async (id: string) => {
+    try {
+      await deleteCaller(id);
+      loadCallers();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete caller");
+    }
   };
 
   const filteredCallers = callers.filter(
@@ -161,7 +182,10 @@ export function Callers() {
                         <button className="text-muted-foreground/40 hover:text-muted-foreground transition-colors">
                           <Edit className="w-3.5 h-3.5" />
                         </button>
-                        <button className="text-muted-foreground/40 hover:text-red-400 transition-colors">
+                        <button
+                          className="text-muted-foreground/40 hover:text-red-400 transition-colors"
+                          onClick={() => handleDeleteCaller(caller.id)}
+                        >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>

@@ -5,6 +5,7 @@ import { Dashboard } from "./components/Dashboard";
 import { Campaigns } from "./components/Campaigns";
 import { CampaignDetail } from "./components/CampaignDetail";
 import { Callers } from "./components/Callers";
+import { Scripts } from "./components/Scripts";
 import { Employees } from "./components/Employees";
 import { Calls } from "./components/Calls";
 import { NotFound } from "./components/NotFound";
@@ -79,6 +80,7 @@ export const router = createBrowserRouter([
               { path: "campaigns", Component: Campaigns },
               { path: "campaigns/:id", Component: CampaignDetail },
               { path: "callers", Component: Callers },
+              { path: "scripts", Component: Scripts },
               { path: "employees", Component: Employees },
               { path: "employees/:id", Component: EmployeeDetail },
               { path: "calls", Component: Calls },

@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Link } from "react-router";
-import { Plus, Search, Play, Pause, Trash2 } from "lucide-react";
+import { Plus, Search, Play, Pause, Trash2, Rocket, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
@@ -22,11 +22,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import type { Campaign } from "../types";
-import { getCampaigns } from "../services/api";
+import type { Campaign, Script, Caller, Employee } from "../types";
+import {
+  getCampaigns,
+  createCampaign,
+  updateCampaign,
+  deleteCampaign,
+  getCampaignScripts,
+  getCallers,
+  getEmployees,
+  launchCampaign,
+} from "../services/api";
 
 const statusStyle = (status: string) => {
   switch (status) {
+    case "running":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50";
     case "active":
       return "bg-[#fdfbe1] text-foreground border-[#fdfbe1] hover:bg-[#fdfbe1]";
     case "paused":
@@ -63,29 +74,113 @@ export function Campaigns() {
     scheduledAt: "",
   });
 
-  useEffect(() => {
-    getCampaigns().then((data) => {
-      setCampaigns(data);
-      setLoading(false);
-    });
+  // Launch dialog state
+  const [showLaunchDialog, setShowLaunchDialog] = useState(false);
+  const [launchCampaignId, setLaunchCampaignId] = useState<string | null>(null);
+  const [launchScripts, setLaunchScripts] = useState<Script[]>([]);
+  const [callers, setCallers] = useState<Caller[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [scriptMode, setScriptMode] = useState<"single" | "all">("all");
+  const [selectedScriptId, setSelectedScriptId] = useState("");
+  const [selectedCallerId, setSelectedCallerId] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [launching, setLaunching] = useState(false);
+
+  const departments = useMemo(() => {
+    const deptMap = new Map<string, number>();
+    for (const e of employees) {
+      if (e.department) {
+        deptMap.set(e.department, (deptMap.get(e.department) || 0) + 1);
+      }
+    }
+    return Array.from(deptMap.entries()).map(([name, count]) => ({ name, count }));
+  }, [employees]);
+
+  const handleOpenLaunchDialog = async (campaign: Campaign) => {
+    setLaunchCampaignId(campaign.id);
+    setShowLaunchDialog(true);
+    const [scripts, c, e] = await Promise.all([
+      getCampaignScripts(campaign.id),
+      getCallers(),
+      getEmployees(),
+    ]);
+    setLaunchScripts(scripts);
+    setCallers(c.filter((x) => x.isActive));
+    setEmployees(e.filter((x) => x.isActive));
+  };
+
+  const handleLaunch = async () => {
+    if (!launchCampaignId) return;
+    if (scriptMode === "single" && (!selectedScriptId || !selectedCallerId)) return;
+    setLaunching(true);
+    try {
+      await launchCampaign(launchCampaignId, {
+        script_id: scriptMode === "single" ? selectedScriptId : undefined,
+        caller_id: scriptMode === "single" ? selectedCallerId : undefined,
+        department: selectedDepartment && selectedDepartment !== "__all__" ? selectedDepartment : undefined,
+      });
+      setShowLaunchDialog(false);
+      setLaunchCampaignId(null);
+      setScriptMode("all");
+      setSelectedScriptId("");
+      setSelectedCallerId("");
+      setSelectedDepartment("");
+      loadCampaigns();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to launch campaign");
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  const loadCampaigns = useCallback(() => {
+    setLoading(true);
+    getCampaigns()
+      .then((data) => {
+        setCampaigns(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
-  const handleCreateCampaign = () => {
-    const newCampaign: Campaign = {
-      id: String(campaigns.length + 1),
-      name: formData.name,
-      description: formData.description,
-      attackVector: formData.attackVector,
-      status: "draft",
-      scheduledAt: formData.scheduledAt,
-      totalCalls: 0,
-      completedCalls: 0,
-      avgRiskScore: 0,
-      createdAt: new Date().toISOString(),
-    };
-    setCampaigns([...campaigns, newCampaign]);
-    setShowModal(false);
-    setFormData({ name: "", description: "", attackVector: "", scheduledAt: "" });
+  useEffect(() => {
+    loadCampaigns();
+  }, []);
+
+  const handleCreateCampaign = async () => {
+    try {
+      await createCampaign({
+        name: formData.name,
+        description: formData.description || undefined,
+        attack_vector: formData.attackVector || undefined,
+      });
+      setShowModal(false);
+      setFormData({ name: "", description: "", attackVector: "", scheduledAt: "" });
+      loadCampaigns();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to create campaign");
+    }
+  };
+
+  const handleToggleStatus = async (campaign: Campaign) => {
+    const newStatus = campaign.status === "active" || campaign.status === "in_progress"
+      ? "paused"
+      : "in_progress";
+    try {
+      await updateCampaign(campaign.id, { status: newStatus });
+      loadCampaigns();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update campaign");
+    }
+  };
+
+  const handleDeleteCampaign = async (id: string) => {
+    try {
+      await deleteCampaign(id);
+      loadCampaigns();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete campaign");
+    }
   };
 
   const filteredCampaigns = campaigns.filter((campaign) => {
@@ -220,18 +315,43 @@ export function Campaigns() {
                 )}
 
                 <div className="flex gap-2 pt-4 border-t">
-                  <Button variant="outline" size="sm" className="flex-1">
-                    {campaign.status === "active" ? (
-                      <>
-                        <Pause className="w-3.5 h-3.5" /> Pause
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3.5 h-3.5" /> Start
-                      </>
-                    )}
-                  </Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8">
+                  {(campaign.status === "draft" || campaign.status === "paused") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleOpenLaunchDialog(campaign)}
+                    >
+                      <Play className="w-3.5 h-3.5" /> Launch
+                    </Button>
+                  )}
+                  {campaign.status === "running" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      disabled
+                    >
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Running...
+                    </Button>
+                  )}
+                  {(campaign.status === "active" || campaign.status === "completed") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      disabled={campaign.status === "completed"}
+                      onClick={() => handleToggleStatus(campaign)}
+                    >
+                      <Pause className="w-3.5 h-3.5" /> {campaign.status === "completed" ? "Completed" : "Pause"}
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleDeleteCampaign(campaign.id)}
+                  >
                     <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                   </Button>
                 </div>
@@ -335,6 +455,147 @@ export function Campaigns() {
               disabled={!formData.name || !formData.attackVector}
             >
               Create Campaign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Launch Campaign Dialog */}
+      <Dialog open={showLaunchDialog} onOpenChange={setShowLaunchDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Launch Campaign</DialogTitle>
+            <DialogDescription>
+              Choose how scripts are assigned to employees, then select a target
+              department.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Script mode toggle */}
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Script Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScriptMode("all")}
+                  className={`rounded-md border px-3 py-2 text-sm text-left transition-colors ${
+                    scriptMode === "all"
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-input hover:bg-muted/50"
+                  }`}
+                >
+                  <p className="font-medium">All Scripts</p>
+                  <p className={`text-xs mt-0.5 ${scriptMode === "all" ? "text-background/70" : "text-muted-foreground"}`}>
+                    Randomly assign from {launchScripts.length} scripts
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScriptMode("single")}
+                  className={`rounded-md border px-3 py-2 text-sm text-left transition-colors ${
+                    scriptMode === "single"
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-input hover:bg-muted/50"
+                  }`}
+                >
+                  <p className="font-medium">Single Script</p>
+                  <p className={`text-xs mt-0.5 ${scriptMode === "single" ? "text-background/70" : "text-muted-foreground"}`}>
+                    Same script for every employee
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Single-script selectors */}
+            {scriptMode === "single" && (
+              <>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">
+                    Script
+                  </label>
+                  <Select value={selectedScriptId} onValueChange={setSelectedScriptId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a script" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {launchScripts.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}{" "}
+                          <span className="text-muted-foreground">({s.difficulty})</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">
+                    Caller
+                  </label>
+                  <Select value={selectedCallerId} onValueChange={setSelectedCallerId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a caller" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {callers.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.personaName}{" "}
+                          <span className="text-muted-foreground">— {c.personaRole}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Department{" "}
+                <span className="text-muted-foreground/60">(optional — all employees if blank)</span>
+              </label>
+              <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All departments</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d.name} value={d.name}>
+                      {d.name}{" "}
+                      <span className="text-muted-foreground">({d.count} employees)</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLaunchDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLaunch}
+              disabled={
+                launching ||
+                (scriptMode === "single" && (!selectedScriptId || !selectedCallerId))
+              }
+            >
+              {launching ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Launching...
+                </>
+              ) : (
+                <>
+                  <Rocket className="w-4 h-4" />
+                  Launch Campaign
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

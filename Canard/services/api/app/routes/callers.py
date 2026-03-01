@@ -2,12 +2,43 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from app.auth.middleware import OptionalUser
 from app.db import queries
 from app.models.api import CallerListItem
 
 router = APIRouter(prefix="/api/callers", tags=["callers"])
+
+
+class CreateCallerRequest(BaseModel):
+    persona_name: str
+    persona_role: str = ""
+    persona_company: str = ""
+    phone_number: str = ""
+    attack_type: str = ""
+    description: str = ""
+    org_id: str | None = None
+
+
+@router.post("/")
+async def api_create_caller(req: CreateCallerRequest, user: OptionalUser) -> dict:
+    resolved_org_id = user["org_id"] if user else req.org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    data = req.model_dump(exclude={"org_id"})
+    data["org_id"] = resolved_org_id
+    return queries.create_caller(data)
+
+
+@router.delete("/{caller_id}")
+async def api_delete_caller(caller_id: str, user: OptionalUser) -> dict:
+    caller = queries.get_caller(caller_id)
+    if not caller:
+        raise HTTPException(status_code=404, detail="Caller not found")
+    queries.update_caller(caller_id, {"is_active": False})
+    return {"status": "deleted"}
 
 
 @router.get("/", response_model=list[CallerListItem])

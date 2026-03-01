@@ -175,6 +175,20 @@ def update_employee(id: str, data: dict) -> dict:
     return row or {}
 
 
+def list_employees_by_department(org_id: str, department: str) -> list[dict]:
+    result = _execute(
+        get_supabase()
+        .table("employees")
+        .select("*")
+        .eq("org_id", org_id)
+        .eq("department", department)
+        .eq("is_active", True)
+        .order("created_at", desc=True),
+        "list_employees_by_department",
+    )
+    return result if isinstance(result, list) else []
+
+
 # ── Callers ──
 
 
@@ -190,6 +204,15 @@ def get_caller(id: str) -> dict | None:
         "get_caller",
     )
     return _first_or_none(result)
+
+
+def update_caller(id: str, data: dict) -> dict:
+    result = _execute(
+        get_supabase().table("callers").update(data).eq("id", id),
+        "update_caller",
+    )
+    row = _first_or_none(result)
+    return row or {}
 
 
 def list_callers(org_id: str, active_only: bool = True) -> list[dict]:
@@ -237,6 +260,35 @@ def list_scripts(org_id: str, active_only: bool = True) -> list[dict]:
     return result if isinstance(result, list) else []
 
 
+def list_scripts_by_campaign(campaign_id: str) -> list[dict]:
+    result = _execute(
+        get_supabase()
+        .table("scripts")
+        .select("*")
+        .eq("campaign_id", campaign_id)
+        .eq("is_active", True)
+        .order("created_at"),
+        "list_scripts_by_campaign",
+    )
+    return result if isinstance(result, list) else []
+
+
+def update_script(id: str, data: dict) -> dict:
+    result = _execute(
+        get_supabase().table("scripts").update(data).eq("id", id),
+        "update_script",
+    )
+    row = _first_or_none(result)
+    return row or {}
+
+
+def delete_script(id: str) -> None:
+    _execute(
+        get_supabase().table("scripts").delete().eq("id", id),
+        "delete_script",
+    )
+
+
 # ── Campaigns ──
 
 
@@ -264,6 +316,13 @@ def list_campaigns(org_id: str) -> list[dict]:
         "list_campaigns",
     )
     return result if isinstance(result, list) else []
+
+
+def delete_campaign(id: str) -> None:
+    _execute(
+        get_supabase().table("campaigns").delete().eq("id", id),
+        "delete_campaign",
+    )
 
 
 def update_campaign(id: str, data: dict) -> dict:
@@ -306,6 +365,16 @@ def update_campaign_assignment(id: str, data: dict) -> dict:
     )
     row = _first_or_none(result)
     return row or {}
+
+
+def bulk_create_campaign_assignments(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+    result = _execute(
+        get_supabase().table("campaign_assignments").insert(rows),
+        "bulk_create_campaign_assignments",
+    )
+    return result if isinstance(result, list) else []
 
 
 # ── Calls ──

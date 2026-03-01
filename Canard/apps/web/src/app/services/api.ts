@@ -3,6 +3,7 @@ import type {
   Call,
   Campaign,
   Employee,
+  Script,
   DashboardStat,
   RiskDistribution,
   CallsOverTime,
@@ -83,10 +84,122 @@ export async function getCampaign(id: string): Promise<Campaign | undefined> {
   }
 }
 
+export async function createCampaign(data: {
+  name: string;
+  description?: string;
+  attack_vector?: string;
+}): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>("/api/campaigns/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateCampaign(
+  id: string,
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(`/api/campaigns/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCampaign(id: string): Promise<void> {
+  await apiFetch<Record<string, unknown>>(`/api/campaigns/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getCampaignScripts(campaignId: string): Promise<Script[]> {
+  return apiFetch<Script[]>(`/api/campaigns/${campaignId}/scripts`);
+}
+
+export async function launchCampaign(
+  campaignId: string,
+  data: {
+    script_id?: string;
+    caller_id?: string;
+    department?: string;
+    employee_ids?: string[];
+  }
+): Promise<{ campaign_id: string; status: string; assignment_count: number }> {
+  return apiFetch<{ campaign_id: string; status: string; assignment_count: number }>(
+    `/api/campaigns/${campaignId}/launch`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }
+  );
+}
+
 // ─── Callers ────────────────────────────────────────────────────────
 
 export async function getCallers(): Promise<Caller[]> {
   return apiFetch<Caller[]>("/api/callers/");
+}
+
+export async function createCaller(data: {
+  persona_name: string;
+  persona_role?: string;
+  persona_company?: string;
+  phone_number?: string;
+  attack_type?: string;
+  description?: string;
+}): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>("/api/callers/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCaller(id: string): Promise<void> {
+  await apiFetch<Record<string, unknown>>(`/api/callers/${id}`, {
+    method: "DELETE",
+  });
+}
+
+// ─── Scripts ─────────────────────────────────────────────────────────
+
+export async function getScripts(): Promise<Script[]> {
+  return apiFetch<Script[]>("/api/scripts/");
+}
+
+export async function createScript(data: {
+  name: string;
+  attack_type?: string;
+  difficulty?: string;
+  system_prompt: string;
+  objectives?: string[];
+  escalation_steps?: string[];
+  description?: string;
+}): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>("/api/scripts/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateScript(
+  id: string,
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(`/api/scripts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteScript(id: string): Promise<void> {
+  await apiFetch<Record<string, unknown>>(`/api/scripts/${id}`, {
+    method: "DELETE",
+  });
 }
 
 // ─── Employees ──────────────────────────────────────────────────────

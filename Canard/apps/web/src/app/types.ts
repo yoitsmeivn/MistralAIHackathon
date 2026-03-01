@@ -1,6 +1,6 @@
 // ─── Status & Enum Types ─────────────────────────────────────────────
 
-export type CampaignStatus = "draft" | "active" | "paused" | "completed";
+export type CampaignStatus = "draft" | "active" | "running" | "paused" | "completed";
 export type CallStatus = "pending" | "in_progress" | "completed" | "failed";
 export type EmployeeCompliance = "passed" | "failed" | "partial";
 export type RiskLevel = "low" | "medium" | "high" | "unknown";
@@ -97,6 +97,21 @@ export interface Call {
   transcript: string;
   flags: string[];
   aiSummary?: string;
+}
+
+export type ScriptDifficulty = "easy" | "medium" | "hard";
+
+export interface Script {
+  id: string;
+  name: string;
+  attackType: string;
+  difficulty: ScriptDifficulty;
+  systemPrompt: string;
+  objectives: string[];
+  escalationSteps: string[];
+  description: string;
+  isActive: boolean;
+  createdAt: string;
 }
 
 // ─── Dashboard aggregates ────────────────────────────────────────────

@@ -93,7 +93,9 @@ export function Employees() {
         setEmployees(data);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setLoading(false);
+      });
   };
 
   useEffect(() => {

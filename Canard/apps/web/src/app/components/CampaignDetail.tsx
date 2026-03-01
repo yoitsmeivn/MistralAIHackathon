@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link, useParams } from "react-router";
 import {
   ArrowLeft,
-  Play,
   Pause,
   Settings,
   Download,
@@ -10,6 +9,10 @@ import {
   Users,
   AlertTriangle,
   CheckCircle,
+  Rocket,
+  Loader2,
+  FileText,
+  Shield,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -25,9 +28,34 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "./ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { Input } from "./ui/input";
 import { Skeleton } from "./ui/skeleton";
-import type { Campaign, Call } from "../types";
-import { getCampaign, getCampaignCalls } from "../services/api";
+import type { Campaign, Call, Script, Caller, Employee } from "../types";
+import {
+  getCampaign,
+  getCampaignCalls,
+  getCampaignScripts,
+  getCallers,
+  getEmployees,
+  launchCampaign,
+  updateScript,
+  updateCampaign,
+} from "../services/api";
 
 const container = {
   hidden: { opacity: 0 },
@@ -44,22 +72,220 @@ const getRiskColor = (score: number) => {
   return "#22c55e";
 };
 
+const difficultyStyle = (d: string) => {
+  switch (d) {
+    case "easy":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "hard":
+      return "bg-red-50 text-red-700 border-red-200";
+    default:
+      return "bg-amber-50 text-amber-700 border-amber-200";
+  }
+};
+
+const statusStyle = (status: string) => {
+  switch (status) {
+    case "running":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "active":
+      return "bg-[#fdfbe1] text-foreground border-[#fdfbe1]";
+    case "paused":
+      return "bg-orange-50 text-orange-700 border-orange-50";
+    case "completed":
+      return "bg-muted text-muted-foreground border-muted";
+    case "draft":
+      return "bg-blue-50 text-indigo-600 border-blue-50";
+    default:
+      return "";
+  }
+};
+
 export function CampaignDetail() {
   const { id } = useParams();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [callResults, setCallResults] = useState<Call[]>([]);
+  const [campaignScripts, setCampaignScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  // Script detail/edit dialog state
+  const [editingScript, setEditingScript] = useState<Script | null>(null);
+  const [scriptForm, setScriptForm] = useState({
+    name: "",
+    attack_type: "",
+    difficulty: "",
+    system_prompt: "",
+    objectives: "",
+    escalation_steps: "",
+    description: "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  // Launch dialog state
+  const [showLaunchDialog, setShowLaunchDialog] = useState(false);
+  const [callers, setCallers] = useState<Caller[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [scriptMode, setScriptMode] = useState<"single" | "all">("all");
+  const [selectedScriptId, setSelectedScriptId] = useState("");
+  const [selectedCallerId, setSelectedCallerId] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [launching, setLaunching] = useState(false);
+
+  // Campaign edit dialog state
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [campaignForm, setCampaignForm] = useState({
+    name: "",
+    description: "",
+    attack_vector: "",
+    status: "",
+    scheduled_at: "",
+  });
+  const [savingCampaign, setSavingCampaign] = useState(false);
+
+  // Polling ref
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadCampaignData = useCallback(() => {
     if (!id) return;
-    Promise.all([getCampaign(id), getCampaignCalls(id)]).then(
-      ([camp, calls]) => {
+    Promise.all([getCampaign(id), getCampaignCalls(id), getCampaignScripts(id)]).then(
+      ([camp, calls, scripts]) => {
         setCampaign(camp || null);
         setCallResults(calls);
+        setCampaignScripts(scripts);
         setLoading(false);
       }
     );
   }, [id]);
+
+  useEffect(() => {
+    loadCampaignData();
+  }, [loadCampaignData]);
+
+  // Poll when campaign is running
+  useEffect(() => {
+    if (campaign?.status === "running") {
+      pollRef.current = setInterval(loadCampaignData, 10000);
+    } else if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [campaign?.status, loadCampaignData]);
+
+  // Department list derived from employees
+  const departments = useMemo(() => {
+    const deptMap = new Map<string, number>();
+    for (const e of employees) {
+      if (e.department) {
+        deptMap.set(e.department, (deptMap.get(e.department) || 0) + 1);
+      }
+    }
+    return Array.from(deptMap.entries()).map(([name, count]) => ({
+      name,
+      count,
+    }));
+  }, [employees]);
+
+  const handleOpenLaunchDialog = async () => {
+    setShowLaunchDialog(true);
+    const [c, e] = await Promise.all([getCallers(), getEmployees()]);
+    setCallers(c.filter((x) => x.isActive));
+    setEmployees(e.filter((x) => x.isActive));
+  };
+
+  const handleLaunch = async () => {
+    if (!id) return;
+    if (scriptMode === "single" && (!selectedScriptId || !selectedCallerId)) return;
+    setLaunching(true);
+    try {
+      await launchCampaign(id, {
+        script_id: scriptMode === "single" ? selectedScriptId : undefined,
+        caller_id: scriptMode === "single" ? selectedCallerId : undefined,
+        department: selectedDepartment && selectedDepartment !== "__all__" ? selectedDepartment : undefined,
+      });
+      setShowLaunchDialog(false);
+      setScriptMode("all");
+      setSelectedScriptId("");
+      setSelectedCallerId("");
+      setSelectedDepartment("");
+      loadCampaignData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to launch campaign");
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  const handleOpenEditDialog = () => {
+    if (!campaign) return;
+    setCampaignForm({
+      name: campaign.name,
+      description: campaign.description,
+      attack_vector: campaign.attackVector,
+      status: campaign.status,
+      scheduled_at: campaign.scheduledAt || "",
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveCampaign = async () => {
+    if (!id) return;
+    setSavingCampaign(true);
+    try {
+      const updates: Record<string, unknown> = {};
+      if (campaignForm.name !== campaign?.name) updates.name = campaignForm.name;
+      if (campaignForm.description !== campaign?.description) updates.description = campaignForm.description;
+      if (campaignForm.attack_vector !== campaign?.attackVector) updates.attack_vector = campaignForm.attack_vector;
+      if (campaignForm.status !== campaign?.status) updates.status = campaignForm.status;
+      if (campaignForm.scheduled_at !== (campaign?.scheduledAt || "")) updates.scheduled_at = campaignForm.scheduled_at || null;
+
+      if (Object.keys(updates).length > 0) {
+        await updateCampaign(id, updates);
+        loadCampaignData();
+      }
+      setShowEditDialog(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update campaign");
+    } finally {
+      setSavingCampaign(false);
+    }
+  };
+
+  const handleOpenScript = (script: Script) => {
+    setEditingScript(script);
+    setScriptForm({
+      name: script.name,
+      attack_type: script.attackType,
+      difficulty: script.difficulty,
+      system_prompt: script.systemPrompt,
+      objectives: script.objectives.join(", "),
+      escalation_steps: script.escalationSteps.join(", "),
+      description: script.description,
+    });
+  };
+
+  const handleSaveScript = async () => {
+    if (!editingScript) return;
+    setSaving(true);
+    try {
+      await updateScript(editingScript.id, {
+        name: scriptForm.name,
+        attack_type: scriptForm.attack_type,
+        difficulty: scriptForm.difficulty,
+        system_prompt: scriptForm.system_prompt,
+        objectives: scriptForm.objectives.split(",").map((s) => s.trim()).filter(Boolean),
+        escalation_steps: scriptForm.escalation_steps.split(",").map((s) => s.trim()).filter(Boolean),
+        description: scriptForm.description,
+      });
+      setEditingScript(null);
+      loadCampaignData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update script");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading || !campaign) {
     return (
@@ -75,7 +301,8 @@ export function CampaignDetail() {
     );
   }
 
-  const progress = (campaign.completedCalls / campaign.totalCalls) * 100;
+  const totalCalls = campaign.totalCalls || 1;
+  const progress = (campaign.completedCalls / totalCalls) * 100;
   const failedCount = callResults.filter(
     (c) => c.employeeCompliance === "failed"
   ).length;
@@ -98,6 +325,9 @@ export function CampaignDetail() {
     { label: "Passed Tests", value: String(passedCount), icon: CheckCircle },
   ];
 
+  const canLaunch = campaign.status === "draft" || campaign.status === "paused";
+  const isRunning = campaign.status === "running";
+
   return (
     <motion.div
       className="p-8 max-w-7xl"
@@ -115,16 +345,24 @@ export function CampaignDetail() {
           Back to Campaigns
         </Link>
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-medium mb-1 text-foreground">
-              {campaign.name}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {campaign.description}
-            </p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-2xl font-medium mb-1 text-foreground">
+                {campaign.name}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {campaign.description}
+              </p>
+            </div>
+            <Badge className={`${statusStyle(campaign.status)} border`}>
+              {isRunning && (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              )}
+              {campaign.status}
+            </Badge>
           </div>
           <div className="flex gap-2 shrink-0">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleOpenEditDialog}>
               <Settings className="w-4 h-4" />
               Settings
             </Button>
@@ -132,17 +370,31 @@ export function CampaignDetail() {
               <Download className="w-4 h-4" />
               Export
             </Button>
-            <Button size="sm">
-              {campaign.status === "active" ? (
-                <>
-                  <Pause className="w-4 h-4" /> Pause
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" /> Resume
-                </>
-              )}
-            </Button>
+            {canLaunch && (
+              <Button size="sm" onClick={handleOpenLaunchDialog}>
+                <Rocket className="w-4 h-4" />
+                Launch
+              </Button>
+            )}
+            {isRunning && (
+              <Button size="sm" variant="outline" disabled>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Running...
+              </Button>
+            )}
+            {!canLaunch && !isRunning && (
+              <Button size="sm" variant="outline" disabled>
+                {campaign.status === "completed" ? (
+                  <>
+                    <CheckCircle className="w-4 h-4" /> Completed
+                  </>
+                ) : (
+                  <>
+                    <Pause className="w-4 h-4" /> Paused
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </motion.div>
@@ -186,10 +438,10 @@ export function CampaignDetail() {
                 <span className="text-muted-foreground">Completed Calls</span>
                 <span className="text-foreground">
                   {campaign.completedCalls}/{campaign.totalCalls} ·{" "}
-                  {Math.round(progress)}%
+                  {campaign.totalCalls > 0 ? Math.round(progress) : 0}%
                 </span>
               </div>
-              <Progress value={progress} className="h-1.5" />
+              <Progress value={campaign.totalCalls > 0 ? progress : 0} className="h-1.5" />
             </div>
 
             <Separator className="my-4" />
@@ -226,6 +478,64 @@ export function CampaignDetail() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Scripts Card */}
+      {campaignScripts.length > 0 && (
+        <motion.div variants={item}>
+          <Card className="mb-6">
+            <CardHeader className="border-b pb-4">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Attack Scripts ({campaignScripts.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-6">Script</TableHead>
+                    <TableHead>Attack Type</TableHead>
+                    <TableHead>Difficulty</TableHead>
+                    <TableHead>Objective</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {campaignScripts.map((script) => (
+                    <TableRow
+                      key={script.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleOpenScript(script)}
+                    >
+                      <TableCell className="pl-6">
+                        <div>
+                          <p className="font-medium text-sm">{script.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                            {script.description}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs font-normal">
+                          <Shield className="w-3 h-3 mr-1" />
+                          {script.attackType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${difficultyStyle(script.difficulty)} border text-xs`}>
+                          {script.difficulty}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-mono">
+                        {script.objectives[0] || "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Call Results Table */}
       <motion.div variants={item}>
@@ -296,6 +606,379 @@ export function CampaignDetail() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Campaign Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Campaign Settings</DialogTitle>
+            <DialogDescription>
+              Edit the campaign details and configuration.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">Name</label>
+              <Input
+                value={campaignForm.name}
+                onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">Description</label>
+              <textarea
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                rows={3}
+                value={campaignForm.description}
+                onChange={(e) => setCampaignForm({ ...campaignForm, description: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">Attack Vector</label>
+                <Select
+                  value={campaignForm.attack_vector}
+                  onValueChange={(v) => setCampaignForm({ ...campaignForm, attack_vector: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select attack vector" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Authority Impersonation">Authority Impersonation</SelectItem>
+                    <SelectItem value="Financial Scam">Financial Scam</SelectItem>
+                    <SelectItem value="Technical Support Scam">Technical Support Scam</SelectItem>
+                    <SelectItem value="Prize/Reward">Prize/Reward</SelectItem>
+                    <SelectItem value="Internal Authority">Internal Authority</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">Status</label>
+                <Select
+                  value={campaignForm.status}
+                  onValueChange={(v) => setCampaignForm({ ...campaignForm, status: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Scheduled At <span className="text-muted-foreground/60">(optional)</span>
+              </label>
+              <Input
+                type="datetime-local"
+                value={campaignForm.scheduled_at ? campaignForm.scheduled_at.slice(0, 16) : ""}
+                onChange={(e) => setCampaignForm({ ...campaignForm, scheduled_at: e.target.value ? new Date(e.target.value).toISOString() : "" })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCampaign} disabled={savingCampaign || !campaignForm.name.trim()}>
+              {savingCampaign ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Script Detail/Edit Dialog */}
+      <Dialog open={!!editingScript} onOpenChange={(open) => !open && setEditingScript(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Script Details</DialogTitle>
+            <DialogDescription>
+              View and edit the script configuration for this attack scenario.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">Name</label>
+                <Input
+                  value={scriptForm.name}
+                  onChange={(e) => setScriptForm({ ...scriptForm, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">Attack Type</label>
+                <Select
+                  value={scriptForm.attack_type}
+                  onValueChange={(v) => setScriptForm({ ...scriptForm, attack_type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Authority Impersonation">Authority Impersonation</SelectItem>
+                    <SelectItem value="Financial Scam">Financial Scam</SelectItem>
+                    <SelectItem value="Technical Support Scam">Technical Support Scam</SelectItem>
+                    <SelectItem value="Prize/Reward">Prize/Reward</SelectItem>
+                    <SelectItem value="Internal Authority">Internal Authority</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">Difficulty</label>
+                <Select
+                  value={scriptForm.difficulty}
+                  onValueChange={(v) => setScriptForm({ ...scriptForm, difficulty: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="easy">Easy</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="hard">Hard</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">Objective</label>
+                <Input
+                  value={scriptForm.objectives}
+                  onChange={(e) => setScriptForm({ ...scriptForm, objectives: e.target.value })}
+                  placeholder="e.g. get_vpn_password"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">Description</label>
+              <textarea
+                className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                rows={2}
+                value={scriptForm.description}
+                onChange={(e) => setScriptForm({ ...scriptForm, description: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">System Prompt</label>
+              <textarea
+                className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono text-xs"
+                rows={6}
+                value={scriptForm.system_prompt}
+                onChange={(e) => setScriptForm({ ...scriptForm, system_prompt: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Escalation Steps <span className="text-muted-foreground/60">(comma-separated)</span>
+              </label>
+              <textarea
+                className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                rows={2}
+                value={scriptForm.escalation_steps}
+                onChange={(e) => setScriptForm({ ...scriptForm, escalation_steps: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingScript(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveScript} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Launch Campaign Dialog */}
+      <Dialog open={showLaunchDialog} onOpenChange={setShowLaunchDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Launch Campaign</DialogTitle>
+            <DialogDescription>
+              Choose how scripts are assigned to employees, then select a target
+              department.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Script mode toggle */}
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Script Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScriptMode("all")}
+                  className={`rounded-md border px-3 py-2 text-sm text-left transition-colors ${
+                    scriptMode === "all"
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-input hover:bg-muted/50"
+                  }`}
+                >
+                  <p className="font-medium">All Scripts</p>
+                  <p className={`text-xs mt-0.5 ${scriptMode === "all" ? "text-background/70" : "text-muted-foreground"}`}>
+                    Randomly assign from {campaignScripts.length} scripts
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScriptMode("single")}
+                  className={`rounded-md border px-3 py-2 text-sm text-left transition-colors ${
+                    scriptMode === "single"
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-input hover:bg-muted/50"
+                  }`}
+                >
+                  <p className="font-medium">Single Script</p>
+                  <p className={`text-xs mt-0.5 ${scriptMode === "single" ? "text-background/70" : "text-muted-foreground"}`}>
+                    Same script for every employee
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Single-script selectors (only shown in single mode) */}
+            {scriptMode === "single" && (
+              <>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">
+                    Script
+                  </label>
+                  <Select
+                    value={selectedScriptId}
+                    onValueChange={setSelectedScriptId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a script" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {campaignScripts.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}{" "}
+                          <span className="text-muted-foreground">
+                            ({s.difficulty})
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">
+                    Caller
+                  </label>
+                  <Select
+                    value={selectedCallerId}
+                    onValueChange={setSelectedCallerId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a caller" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {callers.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.personaName}{" "}
+                          <span className="text-muted-foreground">
+                            — {c.personaRole}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Department{" "}
+                <span className="text-muted-foreground/60">(optional — all employees if blank)</span>
+              </label>
+              <Select
+                value={selectedDepartment}
+                onValueChange={setSelectedDepartment}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All departments</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d.name} value={d.name}>
+                      {d.name}{" "}
+                      <span className="text-muted-foreground">
+                        ({d.count} employees)
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowLaunchDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLaunch}
+              disabled={
+                launching ||
+                (scriptMode === "single" && (!selectedScriptId || !selectedCallerId))
+              }
+            >
+              {launching ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Launching...
+                </>
+              ) : (
+                <>
+                  <Rocket className="w-4 h-4" />
+                  Launch Campaign
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

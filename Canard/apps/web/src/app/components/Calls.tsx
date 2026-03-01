@@ -337,15 +337,29 @@ export function Calls() {
 
                 <Separator />
 
-                {/* Transcript */}
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    AI Summary
-                  </p>
-                  <div className="p-4 rounded-xl bg-muted/50 text-sm text-muted-foreground leading-relaxed">
-                    {selectedCall.transcript}
+                {/* AI Summary */}
+                {selectedCall.aiSummary && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      AI Summary
+                    </p>
+                    <div className="p-4 rounded-xl bg-muted/50 text-sm text-muted-foreground leading-relaxed">
+                      {selectedCall.aiSummary}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* Transcript */}
+                {selectedCall.transcript && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Transcript
+                    </p>
+                    <div className="p-4 rounded-xl bg-muted/50 text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                      {selectedCall.transcript}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-2">
                   <Button variant="outline" size="sm">

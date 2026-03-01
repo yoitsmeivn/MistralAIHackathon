@@ -70,6 +70,22 @@ class CallerListItem(CamelModel):
     avg_success_rate: int = 0
 
 
+# ── Script ──
+
+
+class ScriptListItem(CamelModel):
+    id: str
+    name: str = ""
+    attack_type: str = ""
+    difficulty: str = "medium"
+    system_prompt: str = ""
+    objectives: list[str] = Field(default_factory=list)
+    escalation_steps: list[str] = Field(default_factory=list)
+    description: str = ""
+    is_active: bool = True
+    created_at: str = ""
+
+
 # ── Campaign ──
 
 
