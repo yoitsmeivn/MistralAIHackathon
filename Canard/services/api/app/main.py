@@ -14,6 +14,7 @@ from app.routes.campaigns import router as campaigns_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.employees import router as employees_router
 from app.routes.health import router as health_router
+from app.routes.scripts import router as scripts_router
 from app.twilio_voice.routes import router as twilio_router
 
 

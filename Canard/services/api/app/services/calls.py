@@ -62,6 +62,7 @@ async def start_call(
             {
                 "phone_from": settings.twilio_from_number,
                 "phone_to": employee["phone"],
+                "twilio_call_sid": twilio_sid,
                 "status": "ringing",
                 "started_at": datetime.now(timezone.utc).isoformat(),
             },
