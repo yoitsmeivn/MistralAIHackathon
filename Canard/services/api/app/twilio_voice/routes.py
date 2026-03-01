@@ -95,8 +95,15 @@ async def generate_agent_reply(call_id: str, transcript: str) -> str:
         return await run_turn(call_id, transcript)
     except Exception:
         LOGGER.exception("Mistral agent reply failed for call_id=%s", call_id)
-        return "I'm sorry, could you repeat that? I had trouble hearing you."
-
+        # Return a natural bridge phrase instead of a confused-sounding apology.
+        # This keeps the call flowing even if Mistral has a transient hiccup.
+        import random as _r
+        _bridges = [
+            "Yeah so, let me just pick up where I was — ",
+            "Right, so the thing is — ",
+            "Okay so basically what I need from you is — ",
+        ]
+        return _r.choice(_bridges)
 
 async def _init_agent_session(call_id: str) -> tuple[dict | None, dict | None]:
     """Fetch script/caller from DB and initialize the Mistral agent session.
@@ -747,12 +754,16 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 elif event == "mark":
                     mark_name = msg.get("mark", {}).get("name", "")
                     session.add_mark(mark_name)
-                    last_speech_time[0] = time.monotonic()
                     LOGGER.debug("Twilio mark received: %s", mark_name)
 
                     async def _echo_guard(mn: str = mark_name) -> None:
                         await asyncio.sleep(0.15)
                         session.state_transition(AgentState.LISTENING)
+                        # Reset silence timer AND nudge flag when agent finishes speaking.
+                        # Without this, the nudge fires immediately after every agent turn
+                        # because nudge_sent stays True from the previous nudge.
+                        last_speech_time[0] = time.monotonic()
+                        silence_state["nudge_sent"] = False
                         await event_bus.emit(
                             CallEvent(
                                 call_id,
@@ -836,9 +847,9 @@ async def twilio_stream(websocket: WebSocket) -> None:
 
             if elapsed >= goodbye_threshold:
                 goodbye_phrases = [
-                    "Well, seems like you're busy. I'll try again later!",
-                    "Hello? Okay, I'll let you go. Have a good one!",
-                    "Alright, I think we got cut off. Take care!",
+                    "Alright, I'll let you go — I'll follow up later. Take care!",
+                    "Okay, sounds like you're tied up. I'll reach back out. Have a good one!",
+                    "Alright, I'll circle back when it's a better time. Talk soon!",
                 ]
                 goodbye_text = random.choice(goodbye_phrases)
                 try:
@@ -904,9 +915,9 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 and (time.monotonic() - last_nudge_time[0]) >= 15.0
             ):
                 nudge_phrases = [
-                    "Hello? You still there?",
-                    "Hey, you there?",
-                    "Sorry, did I lose you?",
+                    "So anyway, where was I — right, so what I need from you is just a couple quick things.",
+                    "Okay so, just to keep things moving — I still need to verify a couple details on my end.",
+                    "Right so, I'll just keep going — the main thing I need from you is real quick.",
                 ]
                 nudge_text = random.choice(nudge_phrases)
                 try:
@@ -1320,8 +1331,13 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     LOGGER.exception(
                         "Mistral agent reply failed for call_id=%s", call_id
                     )
+                    # Natural bridge — keeps the call flowing instead of sounding confused
                     all_sentences = [
-                        "I'm sorry, could you repeat that? I had trouble hearing you."
+                        random.choice([
+                            "Yeah so, let me just continue — ",
+                            "Right, so what I was saying is — ",
+                            "Okay so basically — ",
+                        ])
                     ]
 
                 full_response = " ".join(all_sentences)

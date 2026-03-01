@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Safety
     store_raw_transcripts: bool = False
 
-    silence_nudge_ms: int = 1500
+    silence_nudge_ms: int = 4000
     silence_goodbye_ms: int = 20000
 
     # W&B Weave

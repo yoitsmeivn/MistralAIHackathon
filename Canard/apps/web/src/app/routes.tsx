@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet, useNavigate } from "react-router";
+import { createBrowserRouter, Navigate, Outlet, useNavigate, useParams } from "react-router";
 import { useEffect } from "react";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { Dashboard } from "./components/Dashboard";
@@ -37,6 +37,12 @@ function RootLayout() {
       <Outlet />
     </AuthProvider>
   );
+}
+
+/** Redirect /campaigns/:id → /dashboard/campaigns/:id */
+function CampaignDetailRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/dashboard/campaigns/${id}`} replace />;
 }
 
 /** Shows landing page if not authenticated, redirects to /dashboard if logged in */
@@ -89,6 +95,10 @@ export const router = createBrowserRouter([
       { path: "/signup", Component: CompanySignUp },
       { path: "/invite/accept", Component: AcceptInvite },
       { path: "/create-account", element: <Navigate to="/login" replace /> },
+
+      /* Short-URL redirects for links that omit /dashboard prefix */
+      { path: "/campaigns", element: <Navigate to="/dashboard/campaigns" replace /> },
+      { path: "/campaigns/:id", Component: CampaignDetailRedirect },
 
       /* Protected dashboard routes */
       {

@@ -72,9 +72,11 @@ async def api_list_calls(
 
     items: list[CallEnriched] = []
     for c in raw_calls:
-        flags = c.get("flags") or []
-        if isinstance(flags, str):
-            flags = [flags]
+        flags_raw = c.get("flags") or []
+        if isinstance(flags_raw, str):
+            flags_raw = [flags_raw]
+        # Coerce each flag to str (seeded data may contain dicts)
+        flags = [f if isinstance(f, str) else str(f.get("type", f)) if isinstance(f, dict) else str(f) for f in flags_raw]
 
         items.append(
             CallEnriched(
@@ -82,15 +84,15 @@ async def api_list_calls(
                 employee_name=emp_names.get(c.get("employee_id", ""), ""),
                 caller_name=caller_names.get(c.get("caller_id", ""), ""),
                 campaign_name=campaign_names.get(c.get("campaign_id", ""), ""),
-                status=c.get("status", "pending"),
-                started_at=c.get("started_at", "") or "",
+                status=c.get("status") or "pending",
+                started_at=c.get("started_at") or "",
                 duration=_format_duration(c.get("duration_seconds")),
                 duration_seconds=c.get("duration_seconds"),
                 risk_score=c.get("risk_score") or 0,
                 employee_compliance=c.get("employee_compliance") or "",
                 transcript=c.get("transcript") or "",
                 flags=flags,
-                ai_summary=c.get("ai_summary", "") or "",
+                ai_summary=c.get("ai_summary") or "",
             )
         )
     return items
@@ -151,9 +153,10 @@ async def api_call_detail(call_id: str) -> CallEnriched:
     caller = queries.get_caller(c.get("caller_id", "")) if c.get("caller_id") else None
     campaign = queries.get_campaign(c.get("campaign_id", "")) if c.get("campaign_id") else None
 
-    flags = c.get("flags") or []
-    if isinstance(flags, str):
-        flags = [flags]
+    flags_raw = c.get("flags") or []
+    if isinstance(flags_raw, str):
+        flags_raw = [flags_raw]
+    flags = [f if isinstance(f, str) else str(f.get("type", f)) if isinstance(f, dict) else str(f) for f in flags_raw]
 
     return CallEnriched(
         id=c["id"],
