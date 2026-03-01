@@ -12,10 +12,14 @@ from app.models.api import (
     CampaignEffectivenessItem,
     CampaignEffectivenessResponse,
     DepartmentTrendPoint,
+    DeptFlagPivotCell,
+    DeptFlagPivotResponse,
     EmployeeAnalyticsResponse,
     EmployeeCallHistoryItem,
     FlagFrequencyResponse,
     HeatmapCellResponse,
+    HierarchyRiskResponse,
+    OrgTreeNode,
     RepeatOffenderResponse,
     RiskTrendPoint,
 )
@@ -459,4 +463,211 @@ async def api_employee_detail(
         compliance_breakdown={"passed": passed, "failed": failed, "partial": partial},
         flag_summary=flag_summary,
         calls=call_items,
+    )
+
+
+# ── Departmental Failure Pivot ──────────────────────────────────────
+
+
+@router.get("/dept-flag-pivot", response_model=DeptFlagPivotResponse)
+async def api_dept_flag_pivot(
+    org_id: str = Query(...),
+    flag_type: str | None = Query(None),
+) -> DeptFlagPivotResponse:
+    employees = queries.list_employees(org_id, active_only=False)
+    all_calls = queries.list_calls(org_id=org_id, limit=10000)
+
+    emp_lookup: dict[str, dict] = {e["id"]: e for e in employees}
+    completed = [c for c in all_calls if c.get("status") == "completed"]
+
+    # Dept call totals
+    dept_call_totals: Counter[str] = Counter()
+    for c in completed:
+        dept = emp_lookup.get(c.get("employee_id", ""), {}).get("department", "Other")
+        dept_call_totals[dept] += 1
+
+    # (dept, flag) -> {count, employees}
+    pivot: dict[tuple[str, str], dict] = defaultdict(lambda: {"count": 0, "employees": set()})
+    flag_totals: Counter[str] = Counter()
+
+    for c in completed:
+        eid = c.get("employee_id", "")
+        dept = emp_lookup.get(eid, {}).get("department", "Other")
+        for flag in c.get("flags") or []:
+            is_pos = flag in POSITIVE_FLAGS
+            if flag_type == "positive" and not is_pos:
+                continue
+            if flag_type == "negative" and is_pos:
+                continue
+            key = (dept, flag)
+            pivot[key]["count"] += 1
+            pivot[key]["employees"].add(eid)
+            flag_totals[flag] += 1
+
+    cells: list[DeptFlagPivotCell] = []
+    for (dept, flag), data in pivot.items():
+        dept_total = dept_call_totals.get(dept, 0)
+        cells.append(
+            DeptFlagPivotCell(
+                department=dept,
+                flag=flag,
+                count=data["count"],
+                total_dept_calls=dept_total,
+                percentage=round(data["count"] / dept_total * 100, 1) if dept_total > 0 else 0,
+                affected_employees=len(data["employees"]),
+                is_positive=flag in POSITIVE_FLAGS,
+            )
+        )
+
+    # Sorted lists for axis labels
+    departments = [d for d, _ in dept_call_totals.most_common()]
+    flags = [f for f, _ in flag_totals.most_common()]
+    pos_flags = [f for f in flags if f in POSITIVE_FLAGS]
+
+    return DeptFlagPivotResponse(
+        cells=cells,
+        departments=departments,
+        flags=flags,
+        positive_flags=pos_flags,
+        department_totals=dict(dept_call_totals),
+        flag_totals=dict(flag_totals),
+    )
+
+
+# ── Hierarchical Risk Roll-Up ──────────────────────────────────────
+
+
+@router.get("/hierarchy-risk/{employee_id}", response_model=HierarchyRiskResponse)
+async def api_hierarchy_risk(
+    employee_id: str,
+    org_id: str = Query(...),
+) -> HierarchyRiskResponse:
+    from fastapi import HTTPException
+
+    emp = queries.get_employee(employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    subordinates = queries.get_subordinates(employee_id)
+    all_sub_ids = {s["id"] for s in subordinates}
+
+    # Fetch all org calls in one go
+    all_calls = queries.list_calls(org_id=org_id, limit=10000)
+    completed = [c for c in all_calls if c.get("status") == "completed"]
+
+    # Group calls by employee
+    calls_by_emp: dict[str, list[dict]] = defaultdict(list)
+    for c in completed:
+        eid = c.get("employee_id", "")
+        if eid:
+            calls_by_emp[eid].append(c)
+
+    def _personal_metrics(eid: str) -> tuple[float, float, int, int]:
+        calls = calls_by_emp.get(eid, [])
+        total = len(calls)
+        failed = sum(1 for c in calls if c.get("employee_compliance") == "failed")
+        scores = [c.get("risk_score", 0) or 0 for c in calls]
+        avg = round(sum(scores) / len(scores), 1) if scores else 0
+        rate = round(failed / total * 100, 1) if total > 0 else 0
+        return avg, rate, total, failed
+
+    # Build nodes for each subordinate
+    nodes: dict[str, OrgTreeNode] = {}
+    for s in subordinates:
+        sid = s["id"]
+        avg, rate, total, failed = _personal_metrics(sid)
+        nodes[sid] = OrgTreeNode(
+            id=sid,
+            full_name=s.get("full_name", ""),
+            department=s.get("department", ""),
+            job_title=s.get("job_title", ""),
+            risk_level=s.get("risk_level", "unknown"),
+            personal_risk_score=avg,
+            personal_failure_rate=rate,
+            personal_total_tests=total,
+            personal_failed_tests=failed,
+            depth=s.get("depth", 1),
+        )
+
+    # Wire children to parents
+    for s in subordinates:
+        sid = s["id"]
+        boss = s.get("boss_id")
+        if boss and boss in nodes:
+            nodes[boss].children.append(nodes[sid])
+        # If boss == employee_id, it's a direct report (handled below)
+
+    # Roll up team metrics bottom-up (process deepest first)
+    max_depth = max((n.depth for n in nodes.values()), default=0)
+    for d in range(max_depth, 0, -1):
+        for node in nodes.values():
+            if node.depth != d:
+                continue
+            # Team = personal + all children's team
+            t_total = node.personal_total_tests
+            t_failed = node.personal_failed_tests
+            t_risk_weighted = node.personal_risk_score * max(node.personal_total_tests, 1)
+            t_weight = max(node.personal_total_tests, 1)
+            for child in node.children:
+                t_total += child.team_total_tests
+                t_failed += child.team_failed_tests
+                t_risk_weighted += child.team_risk_score * max(child.team_total_tests, 1)
+                t_weight += max(child.team_total_tests, 1)
+            node.team_total_tests = t_total
+            node.team_failed_tests = t_failed
+            node.team_risk_score = round(t_risk_weighted / t_weight, 1) if t_weight > 0 else 0
+            node.team_failure_rate = round(t_failed / t_total * 100, 1) if t_total > 0 else 0
+
+    # Build root node for the manager
+    m_avg, m_rate, m_total, m_failed = _personal_metrics(employee_id)
+    direct_reports = [nodes[s["id"]] for s in subordinates if s.get("boss_id") == employee_id]
+    direct_reports.sort(key=lambda n: n.team_risk_score, reverse=True)
+
+    # Roll up team for the root
+    rt_total = m_total
+    rt_failed = m_failed
+    rt_risk_w = m_avg * max(m_total, 1)
+    rt_weight = max(m_total, 1)
+    for child in direct_reports:
+        rt_total += child.team_total_tests
+        rt_failed += child.team_failed_tests
+        rt_risk_w += child.team_risk_score * max(child.team_total_tests, 1)
+        rt_weight += max(child.team_total_tests, 1)
+
+    root = OrgTreeNode(
+        id=employee_id,
+        full_name=emp.get("full_name", ""),
+        department=emp.get("department", ""),
+        job_title=emp.get("job_title", ""),
+        risk_level=emp.get("risk_level", "unknown"),
+        personal_risk_score=m_avg,
+        personal_failure_rate=m_rate,
+        personal_total_tests=m_total,
+        personal_failed_tests=m_failed,
+        team_risk_score=round(rt_risk_w / rt_weight, 1) if rt_weight > 0 else 0,
+        team_failure_rate=round(rt_failed / rt_total * 100, 1) if rt_total > 0 else 0,
+        team_total_tests=rt_total,
+        team_failed_tests=rt_failed,
+        depth=0,
+        children=direct_reports,
+    )
+
+    # Highest-risk path: greedy walk to child with highest team_risk_score
+    risk_path = [root.id]
+    current = root
+    while current.children:
+        worst = max(current.children, key=lambda n: n.team_risk_score)
+        risk_path.append(worst.id)
+        current = worst
+
+    # Top 3 risk hotspots (by personal risk, excluding root)
+    all_nodes = list(nodes.values())
+    all_nodes.sort(key=lambda n: n.personal_risk_score, reverse=True)
+    hotspots = all_nodes[:3]
+
+    return HierarchyRiskResponse(
+        manager=root,
+        total_downstream_employees=len(all_sub_ids),
+        highest_risk_path=risk_path,
+        risk_hotspots=hotspots,
     )

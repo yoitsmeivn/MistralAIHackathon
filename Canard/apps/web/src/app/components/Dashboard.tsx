@@ -8,6 +8,9 @@ import {
   TrendingUp,
   TrendingDown,
   ArrowRight,
+  ShieldAlert,
+  XCircle,
+  Activity,
 } from "lucide-react";
 import {
   AreaChart,
@@ -25,12 +28,23 @@ import { motion } from "motion/react";
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Skeleton } from "./ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "./ui/sheet";
+import { RiskHotspotPanel } from "./dashboard/RiskHotspotPanel";
+import { RecentFailuresPanel } from "./dashboard/RecentFailuresPanel";
+import { CampaignPulsePanel } from "./dashboard/CampaignPulsePanel";
 import type {
   DashboardStat,
   RiskDistribution,
   CallsOverTime,
   Campaign,
   Employee,
+  SmartWidgetsData,
 } from "../types";
 import {
   getDashboardStats,
@@ -39,6 +53,7 @@ import {
   getCallsOverTime,
   getCampaigns,
   getEmployees,
+  getSmartWidgets,
 } from "../services/api";
 
 const statIcons = [PhoneCall, PhoneCall, Users, AlertTriangle];
@@ -70,6 +85,8 @@ export function Dashboard() {
   const [callsTime, setCallsTime] = useState<CallsOverTime[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [widgets, setWidgets] = useState<SmartWidgetsData | null>(null);
+  const [activePanel, setActivePanel] = useState<"risk" | "failures" | "campaigns" | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -80,7 +97,8 @@ export function Dashboard() {
       getCallsOverTime(),
       getCampaigns(),
       getEmployees(),
-    ]).then(([s, r, rd, c, camp, emp]) => {
+      getSmartWidgets(),
+    ]).then(([s, r, rd, c, camp, emp, w]) => {
       setStats(s);
       setRiskDist(r);
       setRiskByDept(rd);
@@ -92,6 +110,7 @@ export function Dashboard() {
           .sort((a, b) => b.failedTests - a.failedTests)
           .slice(0, 3)
       );
+      setWidgets(w);
       setLoading(false);
     });
   }, []);
@@ -168,6 +187,83 @@ export function Dashboard() {
           );
         })}
       </div>
+
+      {/* Smart Widget Cards */}
+      {widgets && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+          <motion.div variants={item}>
+            <Card
+              className="cursor-pointer hover:shadow-md hover:border-red-200 transition-all"
+              onClick={() => setActivePanel("risk")}
+            >
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center">
+                    <ShieldAlert className="w-4 h-4 text-red-500" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground">Risk Hotspots</p>
+                    <p className="text-lg font-medium" style={{ color: widgets.riskHotspot.overallRisk >= 50 ? "#ef4444" : "#f59e0b" }}>
+                      {widgets.riskHotspot.overallRisk}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Worst: {widgets.riskHotspot.worstDepartment || "N/A"} · Click to drill down
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+          <motion.div variants={item}>
+            <Card
+              className="cursor-pointer hover:shadow-md hover:border-amber-200 transition-all"
+              onClick={() => setActivePanel("failures")}
+            >
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
+                    <XCircle className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground">Recent Failures</p>
+                    <p className="text-lg font-medium text-foreground">
+                      {widgets.recentFailures.failures7d}
+                      <span className="text-xs text-muted-foreground font-normal ml-1">last 7d</span>
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {widgets.recentFailures.mostCommonFlag ? `Top: ${widgets.recentFailures.mostCommonFlag}` : "No failures"} · Click to drill down
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+          <motion.div variants={item}>
+            <Card
+              className="cursor-pointer hover:shadow-md hover:border-blue-200 transition-all"
+              onClick={() => setActivePanel("campaigns")}
+            >
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <Activity className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground">Campaign Pulse</p>
+                    <p className="text-lg font-medium text-foreground">
+                      {widgets.campaignPulse.activeCount}
+                      <span className="text-xs text-muted-foreground font-normal ml-1">active</span>
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {widgets.campaignPulse.completionRate}% completion · Click to drill down
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
@@ -473,6 +569,27 @@ export function Dashboard() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Drill-down Sheet */}
+      <Sheet open={activePanel !== null} onOpenChange={(open) => !open && setActivePanel(null)}>
+        <SheetContent side="right" className="sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>
+              {activePanel === "risk" && "Risk Hotspots"}
+              {activePanel === "failures" && "Recent Failures"}
+              {activePanel === "campaigns" && "Campaign Pulse"}
+            </SheetTitle>
+            <SheetDescription>
+              {activePanel === "risk" && "Deep dive into organizational risk distribution"}
+              {activePanel === "failures" && "Investigate recent security test failures"}
+              {activePanel === "campaigns" && "Monitor active campaign progress"}
+            </SheetDescription>
+          </SheetHeader>
+          {widgets && activePanel === "risk" && <RiskHotspotPanel data={widgets.riskHotspot} />}
+          {widgets && activePanel === "failures" && <RecentFailuresPanel data={widgets.recentFailures} />}
+          {widgets && activePanel === "campaigns" && <CampaignPulsePanel data={widgets.campaignPulse} />}
+        </SheetContent>
+      </Sheet>
     </motion.div>
   );
 }
