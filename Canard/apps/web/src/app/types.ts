@@ -104,6 +104,8 @@ export type ScriptDifficulty = "easy" | "medium" | "hard";
 export interface Script {
   id: string;
   name: string;
+  campaignId: string | null;
+  campaignName: string | null;
   attackType: string;
   difficulty: ScriptDifficulty;
   systemPrompt: string;

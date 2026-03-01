@@ -129,11 +129,14 @@ async def api_get_campaign_scripts(campaign_id: str) -> list[ScriptListItem]:
     campaign = queries.get_campaign(campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    camp_name = campaign.get("name", "")
     rows = queries.list_scripts_by_campaign(campaign_id)
     return [
         ScriptListItem(
             id=s["id"],
             name=s.get("name", ""),
+            campaign_id=campaign_id,
+            campaign_name=camp_name,
             attack_type=s.get("attack_type", ""),
             difficulty=s.get("difficulty", "medium"),
             system_prompt=s.get("system_prompt", ""),

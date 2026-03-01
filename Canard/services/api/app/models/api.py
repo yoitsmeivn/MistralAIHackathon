@@ -76,6 +76,8 @@ class CallerListItem(CamelModel):
 class ScriptListItem(CamelModel):
     id: str
     name: str = ""
+    campaign_id: str | None = None
+    campaign_name: str | None = None
     attack_type: str = ""
     difficulty: str = "medium"
     system_prompt: str = ""

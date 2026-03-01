@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router";
 import { Plus, Search, Edit, Trash2, FileText, Target, ArrowUpRight } from "lucide-react";
 import { motion } from "motion/react";
 import { Card, CardContent } from "./ui/card";
@@ -20,8 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import type { Script, ScriptDifficulty } from "../types";
-import { getScripts, createScript, updateScript, deleteScript } from "../services/api";
+import type { Script, ScriptDifficulty, Campaign } from "../types";
+import {
+  getScripts,
+  createScript,
+  updateScript,
+  deleteScript,
+  getCampaigns,
+} from "../services/api";
 
 const container = {
   hidden: { opacity: 0 },
@@ -40,6 +47,7 @@ const difficultyColors: Record<ScriptDifficulty, string> = {
 
 const emptyFormData = {
   name: "",
+  campaignId: "",
   attackType: "",
   difficulty: "medium" as ScriptDifficulty,
   systemPrompt: "",
@@ -53,21 +61,23 @@ export function Scripts() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [scripts, setScripts] = useState<Script[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({ ...emptyFormData });
 
-  const loadScripts = () => {
+  const loadData = () => {
     setLoading(true);
-    getScripts()
-      .then((data) => {
-        setScripts(data);
+    Promise.all([getScripts(), getCampaigns()])
+      .then(([s, c]) => {
+        setScripts(s);
+        setCampaigns(c);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   };
 
   useEffect(() => {
-    loadScripts();
+    loadData();
   }, []);
 
   const openCreate = () => {
@@ -80,6 +90,7 @@ export function Scripts() {
     setEditingId(script.id);
     setFormData({
       name: script.name,
+      campaignId: script.campaignId || "",
       attackType: script.attackType,
       difficulty: script.difficulty,
       systemPrompt: script.systemPrompt,
@@ -95,6 +106,7 @@ export function Scripts() {
       if (editingId) {
         await updateScript(editingId, {
           name: formData.name,
+          campaign_id: formData.campaignId || undefined,
           attack_type: formData.attackType || undefined,
           difficulty: formData.difficulty,
           system_prompt: formData.systemPrompt,
@@ -105,6 +117,7 @@ export function Scripts() {
       } else {
         await createScript({
           name: formData.name,
+          campaign_id: formData.campaignId,
           attack_type: formData.attackType || undefined,
           difficulty: formData.difficulty,
           system_prompt: formData.systemPrompt,
@@ -116,7 +129,7 @@ export function Scripts() {
       setShowModal(false);
       setEditingId(null);
       setFormData({ ...emptyFormData });
-      loadScripts();
+      loadData();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to save script");
     }
@@ -125,7 +138,7 @@ export function Scripts() {
   const handleDelete = async (id: string) => {
     try {
       await deleteScript(id);
-      loadScripts();
+      loadData();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete script");
     }
@@ -150,7 +163,8 @@ export function Scripts() {
     (s) =>
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.attackType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.difficulty.toLowerCase().includes(searchTerm.toLowerCase())
+      s.difficulty.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.campaignName || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -237,6 +251,16 @@ export function Scripts() {
                     </div>
 
                     <div className="flex items-center gap-2 my-2">
+                      {script.campaignName && (
+                        <Link to={`/campaigns/${script.campaignId}`}>
+                          <Badge
+                            variant="outline"
+                            className="text-xs font-normal hover:bg-muted/50 transition-colors cursor-pointer"
+                          >
+                            {script.campaignName}
+                          </Badge>
+                        </Link>
+                      )}
                       {script.attackType && (
                         <Badge
                           variant="secondary"
@@ -285,6 +309,27 @@ export function Scripts() {
           </DialogHeader>
 
           <div className="space-y-4">
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Campaign
+              </label>
+              <Select
+                value={formData.campaignId}
+                onValueChange={(val) => setFormData({ ...formData, campaignId: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a campaign" />
+                </SelectTrigger>
+                <SelectContent>
+                  {campaigns.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div>
               <label className="block text-xs text-muted-foreground mb-1.5">
                 Name
@@ -430,7 +475,7 @@ export function Scripts() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!formData.name || !formData.systemPrompt}
+              disabled={!formData.name || !formData.systemPrompt || !formData.campaignId}
             >
               {editingId ? "Save Changes" : "Create Script"}
             </Button>

@@ -1,5 +1,5 @@
-import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
-import { useState } from "react";
+import { Outlet, NavLink, useLocation, useNavigate, Link } from "react-router";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   BarChart3,
@@ -29,7 +29,7 @@ import {
 } from "./ui/sidebar";
 import { Separator } from "./ui/separator";
 import { useAuth } from "../contexts/AuthContext";
-import { deleteAccount } from "../services/api";
+import { deleteAccount, getCampaign } from "../services/api";
 import logoImg from "../../../CanardSecurityTransparent.png";
 
 interface NavItem {
@@ -51,10 +51,44 @@ const navItems: NavItem[] = [
   { to: "/settings/users", icon: Settings, label: "Team", adminOnly: true },
 ];
 
-function getBreadcrumb(pathname: string) {
-  if (pathname === "/") return ["Dashboard"];
+const labelMap: Record<string, string> = {
+  analytics: "Analytics",
+  campaigns: "Campaigns",
+  callers: "Caller Profiles",
+  scripts: "Scripts",
+  employees: "Employees",
+  calls: "Calls",
+  monitoring: "Call Monitoring",
+  settings: "Settings",
+  users: "Team",
+};
+
+function useBreadcrumbs(pathname: string) {
+  const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const parts = pathname.split("/").filter(Boolean);
+    // Detect /campaigns/:id pattern
+    if (parts[0] === "campaigns" && parts[1] && !labelMap[parts[1]]) {
+      const id = parts[1];
+      if (!resolvedNames[id]) {
+        getCampaign(id).then((c) => {
+          if (c?.name) {
+            setResolvedNames((prev) => ({ ...prev, [id]: c.name }));
+          }
+        });
+      }
+    }
+  }, [pathname]);
+
+  if (pathname === "/") return [{ label: "Dashboard" }];
+
   const parts = pathname.split("/").filter(Boolean);
-  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1));
+  return parts.map((p, i) => {
+    const href = "/" + parts.slice(0, i + 1).join("/");
+    const label = resolvedNames[p] || labelMap[p] || p.charAt(0).toUpperCase() + p.slice(1);
+    return { label, href };
+  });
 }
 
 /** Backdrop overlay that appears when the sidebar is open */
@@ -141,7 +175,7 @@ function SidebarNav() {
 
 export function DashboardLayout() {
   const { pathname } = useLocation();
-  const breadcrumb = getBreadcrumb(pathname);
+  const breadcrumbs = useBreadcrumbs(pathname);
   const { appUser, signOut } = useAuth();
   const navigate = useNavigate();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -202,14 +236,26 @@ export function DashboardLayout() {
           <SidebarTrigger className="-ml-2" />
           <Separator orientation="vertical" className="h-5" />
           <nav className="flex items-center gap-1 text-sm text-muted-foreground">
-            {breadcrumb.map((crumb, i) => (
-              <span key={i} className="flex items-center gap-1">
-                {i > 0 && <ChevronRight className="size-3" />}
-                <span className={i === breadcrumb.length - 1 ? "text-foreground font-medium" : ""}>
-                  {crumb}
+            {breadcrumbs.map((crumb, i) => {
+              const isLast = i === breadcrumbs.length - 1;
+              return (
+                <span key={i} className="flex items-center gap-1">
+                  {i > 0 && <ChevronRight className="size-3" />}
+                  {isLast || !crumb.href ? (
+                    <span className={isLast ? "text-foreground font-medium" : ""}>
+                      {crumb.label}
+                    </span>
+                  ) : (
+                    <Link
+                      to={crumb.href}
+                      className="hover:text-foreground transition-colors"
+                    >
+                      {crumb.label}
+                    </Link>
+                  )}
                 </span>
-              </span>
-            ))}
+              );
+            })}
           </nav>
 
           {/* User info + sign out */}

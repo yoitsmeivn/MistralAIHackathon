@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/scripts", tags=["scripts"])
 
 class CreateScriptRequest(BaseModel):
     name: str
+    campaign_id: str | None = None
     attack_type: str = ""
     difficulty: str = "medium"
     system_prompt: str
@@ -24,6 +25,7 @@ class CreateScriptRequest(BaseModel):
 
 class UpdateScriptRequest(BaseModel):
     name: str | None = None
+    campaign_id: str | None = None
     attack_type: str | None = None
     difficulty: str | None = None
     system_prompt: str | None = None
@@ -55,7 +57,15 @@ async def api_list_scripts(
         raise HTTPException(status_code=401, detail="Authentication required")
 
     rows = queries.list_scripts(resolved_org_id, active_only=False)
-    return [ScriptListItem(**r) for r in rows]
+
+    # Build campaign name lookup
+    campaigns = queries.list_campaigns(resolved_org_id)
+    camp_names: dict[str, str] = {c["id"]: c.get("name", "") for c in campaigns}
+
+    return [
+        ScriptListItem(**r, campaign_name=camp_names.get(r.get("campaign_id", ""), None))
+        for r in rows
+    ]
 
 
 @router.get("/{script_id}", response_model=ScriptListItem)

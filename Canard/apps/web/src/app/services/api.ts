@@ -171,6 +171,7 @@ export async function getScripts(): Promise<Script[]> {
 
 export async function createScript(data: {
   name: string;
+  campaign_id: string;
   attack_type?: string;
   difficulty?: string;
   system_prompt: string;
