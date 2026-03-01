@@ -95,6 +95,46 @@ export async function getEmployees(): Promise<Employee[]> {
   return apiFetch<Employee[]>("/api/employees/");
 }
 
+export async function createEmployee(data: {
+  full_name: string;
+  email: string;
+  phone: string;
+  department?: string;
+  job_title?: string;
+}): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>("/api/employees/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function importEmployeesCSV(
+  file: File
+): Promise<{ created: number; updated: number; errors: string[] }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch("/api/employees/import", {
+    method: "POST",
+    headers: authHeaders,
+    body: formData,
+  });
+  if (res.status === 401) {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = Array.isArray(body.detail)
+      ? body.detail.map((e: { msg?: string }) => e.msg).join(", ")
+      : body.detail;
+    throw new Error(detail || `API error ${res.status}: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 // ─── Calls ──────────────────────────────────────────────────────────
 
 export async function getCalls(): Promise<Call[]> {

@@ -153,6 +153,19 @@ def list_employees(org_id: str, active_only: bool = True) -> list[dict]:
     return result if isinstance(result, list) else []
 
 
+def get_employee_by_email(email: str, org_id: str) -> dict | None:
+    result = _execute(
+        get_supabase()
+        .table("employees")
+        .select("*")
+        .eq("email", email)
+        .eq("org_id", org_id)
+        .limit(1),
+        "get_employee_by_email",
+    )
+    return _first_or_none(result)
+
+
 def update_employee(id: str, data: dict) -> dict:
     result = _execute(
         get_supabase().table("employees").update(data).eq("id", id),
