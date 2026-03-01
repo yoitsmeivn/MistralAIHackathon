@@ -13,6 +13,8 @@ import { CompanySignUp } from "./components/CompanySignUp";
 import { CallMonitoring } from "./components/CallMonitoring";
 import { UserManagement } from "./components/UserManagement";
 import { AcceptInvite } from "./components/AcceptInvite";
+import { Analytics } from "./components/Analytics";
+import { EmployeeDetail } from "./components/EmployeeDetail";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 /** Root layout that wraps everything in AuthProvider */
@@ -73,10 +75,12 @@ export const router = createBrowserRouter([
             Component: DashboardLayout,
             children: [
               { index: true, Component: Dashboard },
+              { path: "analytics", Component: Analytics },
               { path: "campaigns", Component: Campaigns },
               { path: "campaigns/:id", Component: CampaignDetail },
               { path: "callers", Component: Callers },
               { path: "employees", Component: Employees },
+              { path: "employees/:id", Component: EmployeeDetail },
               { path: "calls", Component: Calls },
               { path: "monitoring", Component: CallMonitoring },
               { path: "settings/users", Component: UserManagement },

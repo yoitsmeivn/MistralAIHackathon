@@ -2,6 +2,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
 import { useState } from "react";
 import {
   LayoutDashboard,
+  BarChart3,
   PhoneCall,
   Users,
   UserCircle,
@@ -40,6 +41,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", exact: true },
+  { to: "/analytics", icon: BarChart3, label: "Analytics" },
   { to: "/campaigns", icon: PhoneCall, label: "Campaigns" },
   { to: "/callers", icon: UserCircle, label: "Caller Profiles" },
   { to: "/employees", icon: Users, label: "Employees" },

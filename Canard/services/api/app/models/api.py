@@ -127,3 +127,109 @@ class CallsOverTimeResponse(CamelModel):
     calls: int
     passed: int
     failed: int
+
+
+# ── Analytics aggregates ──
+
+
+class RiskTrendPoint(CamelModel):
+    date: str
+    avg_risk: float
+    call_count: int
+
+
+class DepartmentTrendPoint(CamelModel):
+    date: str
+    department: str
+    total_calls: int
+    failed_calls: int
+    failure_rate: float
+
+
+class RepeatOffenderResponse(CamelModel):
+    employee_id: str
+    employee_name: str
+    department: str
+    total_tests: int
+    failed_tests: int
+    failure_rate: float
+    most_recent_failure: str
+    common_flags: list[str] = Field(default_factory=list)
+    risk_scores: list[int] = Field(default_factory=list)
+
+
+class AttackVectorSummary(CamelModel):
+    attack_vector: str
+    total_calls: int
+    failure_rate: float
+    avg_risk_score: float
+
+
+class CampaignEffectivenessItem(CamelModel):
+    campaign_id: str
+    campaign_name: str
+    attack_vector: str
+    total_calls: int
+    failed_calls: int
+    passed_calls: int
+    partial_calls: int
+    failure_rate: float
+    avg_risk_score: float
+    avg_duration_seconds: float
+
+
+class CampaignEffectivenessResponse(CamelModel):
+    campaigns: list[CampaignEffectivenessItem] = Field(default_factory=list)
+    by_attack_vector: list[AttackVectorSummary] = Field(default_factory=list)
+
+
+class FlagFrequencyResponse(CamelModel):
+    flag: str
+    count: int
+    percentage: float
+    is_positive: bool
+
+
+class HeatmapCellResponse(CamelModel):
+    attack_vector: str
+    department: str
+    total_calls: int
+    failure_rate: float
+    avg_risk_score: float
+
+
+class EmployeeCallHistoryItem(CamelModel):
+    id: str
+    campaign_name: str = ""
+    caller_name: str = ""
+    attack_vector: str = ""
+    status: str = "pending"
+    started_at: str = ""
+    duration: str = ""
+    duration_seconds: int | None = None
+    risk_score: int = 0
+    employee_compliance: str = ""
+    flags: list[str] = Field(default_factory=list)
+    ai_summary: str = ""
+
+
+class EmployeeAnalyticsResponse(CamelModel):
+    id: str
+    full_name: str
+    email: str = ""
+    phone: str = ""
+    department: str = ""
+    job_title: str = ""
+    risk_level: str = "unknown"
+    is_active: bool = True
+    total_tests: int = 0
+    passed_tests: int = 0
+    failed_tests: int = 0
+    partial_tests: int = 0
+    failure_rate: float = 0.0
+    avg_risk_score: float = 0.0
+    risk_score_trend: list[int] = Field(default_factory=list)
+    risk_score_dates: list[str] = Field(default_factory=list)
+    compliance_breakdown: dict[str, int] = Field(default_factory=dict)
+    flag_summary: list[FlagFrequencyResponse] = Field(default_factory=list)
+    calls: list[EmployeeCallHistoryItem] = Field(default_factory=list)
