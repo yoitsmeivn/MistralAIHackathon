@@ -10,27 +10,17 @@ CREATE INDEX IF NOT EXISTS idx_scripts_campaign_id ON scripts(campaign_id);
 -- CALLERS (5)
 -- ═══════════════════════════════════════════════════════════════════════
 
-INSERT INTO callers (id, org_id, created_by, persona_name, persona_role, persona_company, phone_number, attack_type, description) VALUES
-  -- 1. Financial Scam
+INSERT INTO callers (id, org_id, created_by, persona_name, persona_role, persona_company, phone_number) VALUES
   ('00000000-0000-0000-0000-000000000206', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Lisa Fontaine', 'Insurance Claims Adjuster', 'National Benefits Group', '+15553019842', 'Financial Scam',
-   'Poses as insurance claims adjuster to extract banking details and personal information under guise of benefits enrollment or refund processing'),
-  -- 2. Authority Impersonation
+   'Lisa Fontaine', 'Insurance Claims Adjuster', 'National Benefits Group', '+15553019842'),
   ('00000000-0000-0000-0000-000000000207', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Carlos Vega', 'Vendor Account Manager', 'Apex Business Solutions', '+15554827163', 'Authority Impersonation',
-   'Impersonates vendor account manager to pressure targets into updating payment routing, confirming invoice details, or sharing internal data'),
-  -- 3. Prize/Reward
+   'Carlos Vega', 'Vendor Account Manager', 'Apex Business Solutions', '+15554827163'),
   ('00000000-0000-0000-0000-000000000208', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Nicole Park', 'Prize Fulfillment Coordinator', 'Global Rewards Inc', '+15556743928', 'Prize/Reward',
-   'Uses fake prize, award, and reward notifications to extract personal data and payment information from targets'),
-  -- 4. Technical Support Scam
+   'Nicole Park', 'Prize Fulfillment Coordinator', 'Global Rewards Inc', '+15556743928'),
   ('00000000-0000-0000-0000-000000000209', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'James Whitfield', 'SOC Analyst', 'CyberShield IT Services', '+15558291047', 'Technical Support Scam',
-   'Poses as outsourced security operations center analyst to harvest credentials under guise of emergency patches and zero-day remediation'),
-  -- 5. Internal Authority
+   'James Whitfield', 'SOC Analyst', 'CyberShield IT Services', '+15558291047'),
   ('00000000-0000-0000-0000-000000000210', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Rachel Kim', 'Executive Assistant to the VP', 'Internal — Executive Office', '+15552850316', 'Internal Authority',
-   'Impersonates executive assistant to pressure employees into authorizing transfers, sharing credentials, or bypassing procedures citing executive urgency')
+   'Rachel Kim', 'Executive Assistant to the VP', 'Internal — Executive Office', '+15552850316')
 ON CONFLICT (id) DO NOTHING;
 
 

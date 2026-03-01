@@ -147,11 +147,21 @@ export async function createCaller(data: {
   persona_role?: string;
   persona_company?: string;
   phone_number?: string;
-  attack_type?: string;
-  description?: string;
+  voice_profile?: { voice_id?: string; voice_name?: string };
 }): Promise<Record<string, unknown>> {
   return apiFetch<Record<string, unknown>>("/api/callers/", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateCaller(
+  id: string,
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(`/api/callers/${id}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });

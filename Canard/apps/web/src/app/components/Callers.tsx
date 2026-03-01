@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, Edit, Trash2, Phone } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Phone, Volume2 } from "lucide-react";
 import { motion } from "motion/react";
 import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -21,7 +21,23 @@ import {
   SelectValue,
 } from "./ui/select";
 import type { Caller } from "../types";
-import { getCallers, createCaller, deleteCaller } from "../services/api";
+import { getCallers, createCaller, updateCaller, deleteCaller } from "../services/api";
+
+// ElevenLabs voices — curated set for phone call personas
+const ELEVENLABS_VOICES = [
+  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", description: "Calm, young female" },
+  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", description: "Strong, confident female" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", description: "Soft, warm female" },
+  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Well-rounded male" },
+  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", description: "Friendly young female" },
+  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", description: "Deep, authoritative male" },
+  { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", description: "Crisp, confident male" },
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, narrative male" },
+  { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", description: "Raspy, authentic male" },
+  { id: "onwK4e9ZLuTAKqWW03F9", name: "Daniel", description: "Authoritative British male" },
+  { id: "XB0fDUnXU5powFXDhCwa", name: "Charlotte", description: "Warm, Swedish-accented female" },
+  { id: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice", description: "Confident, middle-aged female" },
+] as const;
 
 const container = {
   hidden: { opacity: 0 },
@@ -40,20 +56,21 @@ const getInitials = (name: string) =>
     .toUpperCase()
     .slice(0, 2);
 
+const emptyFormData = {
+  personaName: "",
+  personaRole: "",
+  personaCompany: "",
+  phoneNumber: "",
+  voiceId: "",
+};
+
 export function Callers() {
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [callers, setCallers] = useState<Caller[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const [formData, setFormData] = useState({
-    personaName: "",
-    personaRole: "",
-    personaCompany: "",
-    phoneNumber: "",
-    attackType: "",
-    description: "",
-  });
+  const [formData, setFormData] = useState({ ...emptyFormData });
 
   const loadCallers = () => {
     setLoading(true);
@@ -69,28 +86,53 @@ export function Callers() {
     loadCallers();
   }, []);
 
-  const handleCreateCaller = async () => {
+  const openCreate = () => {
+    setEditingId(null);
+    setFormData({ ...emptyFormData });
+    setShowModal(true);
+  };
+
+  const openEdit = (caller: Caller) => {
+    setEditingId(caller.id);
+    setFormData({
+      personaName: caller.personaName,
+      personaRole: caller.personaRole,
+      personaCompany: caller.personaCompany,
+      phoneNumber: caller.phoneNumber,
+      voiceId: caller.voiceProfile?.voice_id || "",
+    });
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
     try {
-      await createCaller({
-        persona_name: formData.personaName,
-        persona_role: formData.personaRole || undefined,
-        persona_company: formData.personaCompany || undefined,
-        phone_number: formData.phoneNumber || undefined,
-        attack_type: formData.attackType || undefined,
-        description: formData.description || undefined,
-      });
+      const voiceName = ELEVENLABS_VOICES.find((v) => v.id === formData.voiceId)?.name;
+      const voiceProfile = formData.voiceId
+        ? { voice_id: formData.voiceId, voice_name: voiceName }
+        : undefined;
+      if (editingId) {
+        await updateCaller(editingId, {
+          persona_name: formData.personaName,
+          persona_role: formData.personaRole || undefined,
+          persona_company: formData.personaCompany || undefined,
+          phone_number: formData.phoneNumber || undefined,
+          voice_profile: voiceProfile || {},
+        });
+      } else {
+        await createCaller({
+          persona_name: formData.personaName,
+          persona_role: formData.personaRole || undefined,
+          persona_company: formData.personaCompany || undefined,
+          phone_number: formData.phoneNumber || undefined,
+          voice_profile: voiceProfile,
+        });
+      }
       setShowModal(false);
-      setFormData({
-        personaName: "",
-        personaRole: "",
-        personaCompany: "",
-        phoneNumber: "",
-        attackType: "",
-        description: "",
-      });
+      setEditingId(null);
+      setFormData({ ...emptyFormData });
       loadCallers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to create caller");
+      alert(err instanceof Error ? err.message : "Failed to save caller");
     }
   };
 
@@ -107,7 +149,7 @@ export function Callers() {
     (caller) =>
       caller.personaName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       caller.personaRole.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      caller.attackType.toLowerCase().includes(searchTerm.toLowerCase())
+      caller.personaCompany.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -130,7 +172,7 @@ export function Callers() {
             Manage vishing personas for security testing
           </p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
+        <Button onClick={openCreate}>
           <Plus className="w-4 h-4" />
           New Profile
         </Button>
@@ -179,7 +221,10 @@ export function Callers() {
                         {caller.isActive && (
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                         )}
-                        <button className="text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+                        <button
+                          className="text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                          onClick={() => openEdit(caller)}
+                        >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button
@@ -191,25 +236,20 @@ export function Callers() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 my-2">
-                      <Phone className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">
-                        {caller.phoneNumber}
-                      </span>
+                    <div className="flex items-center gap-3 my-2">
+                      <div className="flex items-center gap-1.5">
+                        <Phone className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">
+                          {caller.phoneNumber}
+                        </span>
+                      </div>
+                      {caller.voiceProfile?.voice_name && (
+                        <Badge variant="outline" className="text-xs font-normal gap-1">
+                          <Volume2 className="w-2.5 h-2.5" />
+                          {caller.voiceProfile.voice_name}
+                        </Badge>
+                      )}
                     </div>
-
-                    <div className="flex items-center gap-2 mb-3">
-                      <Badge
-                        variant="secondary"
-                        className="text-xs font-normal"
-                      >
-                        {caller.attackType}
-                      </Badge>
-                    </div>
-
-                    <p className="text-xs text-muted-foreground mb-4 line-clamp-2">
-                      {caller.description}
-                    </p>
 
                     <div className="flex items-center gap-6 pt-3 border-t">
                       <div>
@@ -248,12 +288,12 @@ export function Callers() {
       </div>
 
       {/* Create Caller Dialog */}
-      <Dialog open={showModal} onOpenChange={setShowModal}>
+      <Dialog open={showModal} onOpenChange={(open) => { setShowModal(open); if (!open) setEditingId(null); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>New Caller Profile</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Caller Profile" : "New Caller Profile"}</DialogTitle>
             <DialogDescription>
-              Create a new vishing persona for testing
+              {editingId ? "Update persona details" : "Create a new vishing persona for testing"}
             </DialogDescription>
           </DialogHeader>
 
@@ -296,65 +336,35 @@ export function Callers() {
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1.5">
-                Attack Type
+                Voice
               </label>
               <Select
-                value={formData.attackType}
-                onValueChange={(val) =>
-                  setFormData({ ...formData, attackType: val })
-                }
+                value={formData.voiceId}
+                onValueChange={(val) => setFormData({ ...formData, voiceId: val })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select an attack type" />
+                  <SelectValue placeholder="Select a voice" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Technical Support Scam">
-                    Technical Support Scam
-                  </SelectItem>
-                  <SelectItem value="Authority Impersonation">
-                    Authority Impersonation
-                  </SelectItem>
-                  <SelectItem value="Urgency & Fear">
-                    Urgency & Fear
-                  </SelectItem>
-                  <SelectItem value="Internal Authority">
-                    Internal Authority
-                  </SelectItem>
-                  <SelectItem value="Financial Scam">Financial Scam</SelectItem>
-                  <SelectItem value="Prize/Reward">Prize/Reward</SelectItem>
+                  {ELEVENLABS_VOICES.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name} — {v.description}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                rows={3}
-                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring/50 bg-input-background resize-none"
-                placeholder="Describe the persona's approach and tactics..."
-              />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowModal(false)}>
+            <Button variant="outline" onClick={() => { setShowModal(false); setEditingId(null); }}>
               Cancel
             </Button>
             <Button
-              onClick={handleCreateCaller}
-              disabled={
-                !formData.personaName ||
-                !formData.personaRole ||
-                !formData.attackType
-              }
+              onClick={handleSave}
+              disabled={!formData.personaName || !formData.personaRole}
             >
-              Create Profile
+              {editingId ? "Save Changes" : "Create Profile"}
             </Button>
           </DialogFooter>
         </DialogContent>
