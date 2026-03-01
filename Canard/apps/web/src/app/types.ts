@@ -73,9 +73,9 @@ export interface Campaign {
   description: string;
   attackVector: AttackVector | string;
   status: CampaignStatus;
-  scheduledAt: string;
-  startedAt?: string;
-  completedAt?: string;
+  scheduledAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
   totalCalls: number;
   completedCalls: number;
   avgRiskScore: number;
@@ -92,7 +92,7 @@ export interface Call {
   duration: string;
   durationSeconds?: number;
   riskScore: number;
-  employeeCompliance: EmployeeCompliance;
+  employeeCompliance: EmployeeCompliance | "";
   transcript: string;
   flags: string[];
   aiSummary?: string;

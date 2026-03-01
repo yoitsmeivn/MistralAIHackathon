@@ -489,8 +489,12 @@ export function Dashboard() {
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {campaign.completedCalls} calls ·{" "}
-                        {new Date(campaign.scheduledAt).toLocaleDateString()}
+                        {campaign.completedCalls} calls
+                        {campaign.scheduledAt
+                          ? ` · ${new Date(campaign.scheduledAt).toLocaleDateString()}`
+                          : campaign.createdAt
+                            ? ` · ${new Date(campaign.createdAt).toLocaleDateString()}`
+                            : ""}
                       </p>
                     </div>
                     <div className="ml-4 text-right">

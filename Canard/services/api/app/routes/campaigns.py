@@ -17,6 +17,7 @@ class CreateCampaignRequest(BaseModel):
     created_by: str | None = None
     description: str | None = None
     attack_vector: str | None = None
+    scheduled_at: str | None = None
 
 
 def _enrich_campaigns(campaigns: list[dict], all_calls: list[dict]) -> list[CampaignListItem]:
@@ -68,6 +69,7 @@ async def api_create_campaign(req: CreateCampaignRequest, user: OptionalUser) ->
         created_by=req.created_by or (user["id"] if user else None),
         description=req.description,
         attack_vector=req.attack_vector,
+        scheduled_at=req.scheduled_at,
     )
 
 

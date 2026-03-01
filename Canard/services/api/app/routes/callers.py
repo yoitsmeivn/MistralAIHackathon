@@ -101,6 +101,7 @@ async def api_list_callers(
                 is_active=caller.get("is_active") if caller.get("is_active") is not None else True,
                 total_calls=len(calls),
                 avg_success_rate=success_rate,
+                created_at=caller.get("created_at", ""),
             )
         )
     return items
