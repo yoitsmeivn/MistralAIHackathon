@@ -13,7 +13,7 @@ class Script(BaseModel):
     name: str
     attack_type: str | None = None
     difficulty: str = "medium"
-    system_prompt: str
+    system_prompt: str = ""
     objectives: list[str] = Field(default_factory=list)
     escalation_steps: list[str] = Field(default_factory=list)
     description: str | None = None

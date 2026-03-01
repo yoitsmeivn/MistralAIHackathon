@@ -1,6 +1,8 @@
 # pyright: basic, reportMissingImports=false
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -16,9 +18,27 @@ class CreateCallerRequest(BaseModel):
     persona_role: str = ""
     persona_company: str = ""
     phone_number: str = ""
-    attack_type: str = ""
-    description: str = ""
+    voice_profile: dict[str, Any] | None = None
     org_id: str | None = None
+
+
+class UpdateCallerRequest(BaseModel):
+    persona_name: str | None = None
+    persona_role: str | None = None
+    persona_company: str | None = None
+    phone_number: str | None = None
+    voice_profile: dict[str, Any] | None = None
+
+
+@router.patch("/{caller_id}")
+async def api_update_caller(caller_id: str, req: UpdateCallerRequest, user: OptionalUser) -> dict:
+    caller = queries.get_caller(caller_id)
+    if not caller:
+        raise HTTPException(status_code=404, detail="Caller not found")
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not updates:
+        return caller
+    return queries.update_caller(caller_id, updates)
 
 
 @router.post("/")
@@ -77,8 +97,7 @@ async def api_list_callers(
                 persona_role=caller.get("persona_role", ""),
                 persona_company=caller.get("persona_company", ""),
                 phone_number=caller.get("phone_number", ""),
-                attack_type=caller.get("attack_type", ""),
-                description=caller.get("description", ""),
+                voice_profile=caller.get("voice_profile") or {},
                 is_active=caller.get("is_active") if caller.get("is_active") is not None else True,
                 total_calls=len(calls),
                 avg_success_rate=success_rate,

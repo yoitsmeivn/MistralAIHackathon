@@ -22,19 +22,15 @@ INSERT INTO employees (id, org_id, full_name, email, phone, department, job_titl
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Callers (attacker personas) ──
-INSERT INTO callers (id, org_id, created_by, persona_name, persona_role, persona_company, phone_number, attack_type, description) VALUES
+INSERT INTO callers (id, org_id, created_by, persona_name, persona_role, persona_company, phone_number) VALUES
   ('00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'John Mitchell',    'IT Support Technician',   'TechSupport Solutions', '+15551234567', 'Technical Support Scam',
-   'Poses as IT support requesting password resets and remote access'),
+   'John Mitchell',    'IT Support Technician',   'TechSupport Solutions', '+15551234567'),
   ('00000000-0000-0000-0000-000000000202', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Robert Chen',      'Chief Executive Officer',  'Executive Office',      '+15552345678', 'Authority Impersonation',
-   'Impersonates CEO requesting urgent wire transfers'),
+   'Robert Chen',      'Chief Executive Officer',  'Executive Office',      '+15552345678'),
   ('00000000-0000-0000-0000-000000000203', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Amanda Stevens',   'Security Specialist',      'First National Bank',   '+15553456789', 'Urgency & Fear',
-   'Creates urgency by claiming account security breach'),
+   'Amanda Stevens',   'Security Specialist',      'First National Bank',   '+15553456789'),
   ('00000000-0000-0000-0000-000000000204', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'David Wilson',     'HR Benefits Manager',      'Human Resources',       '+15554567890', 'Internal Authority',
-   'Requests personal information for benefits verification')
+   'David Wilson',     'HR Benefits Manager',      'Human Resources',       '+15554567890')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Scripts ──
@@ -42,28 +38,28 @@ INSERT INTO scripts (id, org_id, created_by, name, attack_type, difficulty, syst
   ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
    'IT Password Reset',
    'Technical Support Scam', 'medium',
-   'You are calling from IT support. There is an urgent security update that requires the employee to verify their credentials. Ask for their current password to "verify their identity" before applying the update.',
+   'Target environment uses Active Directory for authentication, Microsoft 365 for email, and Okta SSO for single sign-on. MFA is enforced via Okta Verify push notifications. IT support tickets are managed through ServiceNow. Employees are accustomed to periodic password rotation prompts every 90 days.',
    '["get_password", "get_mfa_code", "get_remote_access"]',
    '["mention_security_breach", "threaten_account_lockout", "escalate_to_manager"]',
    'Standard IT impersonation script targeting credential harvest'),
   ('00000000-0000-0000-0000-000000000302', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
    'Urgent CEO Wire Transfer',
    'Authority Impersonation', 'hard',
-   'You are the CEO. You need an urgent wire transfer processed immediately for a confidential acquisition. The employee must not discuss this with anyone. Pressure them to bypass normal approval processes.',
+   'Target organization uses SAP for ERP and wire transfers require dual authorization through the Treasury Management System (TMS). Approvals over $10,000 need CFO sign-off via DocuSign. Finance team uses Bloomberg Terminal for transaction verification. Board-level acquisitions are handled under NDA with outside counsel.',
    '["get_transfer", "bypass_approval", "maintain_secrecy"]',
    '["invoke_authority", "create_time_pressure", "threaten_consequences"]',
    'CEO fraud targeting financial staff for wire transfers'),
   ('00000000-0000-0000-0000-000000000303', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
    'Bank Security Alert',
    'Urgency & Fear', 'hard',
-   'You are calling from the fraud department at the employee''s bank. Their account has been compromised and you need to verify their identity immediately. Ask for account number, SSN last 4, and security questions.',
+   'Target employees use corporate banking through Chase Business with online portal access. Direct deposit is set up via Workday payroll. Employees have personal and corporate accounts at various banks. Fraud alerts are typically sent via SMS and email, not phone calls. Bank''s legitimate fraud line requires callback verification.',
    '["get_personal_info", "get_account_details", "get_security_answers"]',
    '["claim_active_fraud", "threaten_account_freeze", "create_panic"]',
    'Bank impersonation exploiting fear of financial loss'),
   ('00000000-0000-0000-0000-000000000304', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
    'HR Benefits Verification',
    'Internal Authority', 'easy',
-   'You are from HR. There is an issue with the employee''s benefits enrollment and you need to verify their personal information including date of birth, SSN, and bank routing number for direct deposit.',
+   'Target organization uses Workday for HRIS and benefits administration. Open enrollment runs annually in November. Benefits changes require employee self-service through the Workday portal. Direct deposit updates go through ADP payroll integration. HR verifications are normally handled via email with manager approval.',
    '["get_personal_info", "get_banking_details"]',
    '["mention_benefits_deadline", "claim_payroll_issue"]',
    'Internal HR impersonation for PII harvesting')

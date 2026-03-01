@@ -2,8 +2,61 @@
 from __future__ import annotations
 
 import json
+import random
 
 STREAM_GREETING = "Hey, hi! Umm, is this a good moment to talk for a minute?"
+
+
+def build_greeting(caller: "dict | None" = None, employee: "dict | None" = None) -> str:
+    """Build a natural, varied greeting using the caller's persona."""
+    if not caller:
+        return STREAM_GREETING
+    name = caller.get("persona_name", "")
+    role = caller.get("persona_role", "")
+    company = caller.get("persona_company", "")
+    if not name:
+        return STREAM_GREETING
+    # Use first name only for casual feel
+    first = name.split()[0] if name else name
+    target_first = ""
+    if employee:
+        target_name = employee.get("full_name", "")
+        if target_name:
+            target_first = target_name.split()[0]
+    # Pick a casual label: role > company > nothing
+    label = ""
+    if role:
+        label = role.lower().replace("specialist", "").replace("analyst", "").strip()
+    elif company:
+        label = company
+    templates_with_label = [
+        f"Hey, hi! This is {first} from {label}. Got a quick minute?",
+        f"Hi there, it's {first} over in {label}. Do you have a sec?",
+        f"Hey, this is {first} with {label}. Is now an okay time?",
+        f"Hi, it's {first} from {label}. You got a moment?",
+    ]
+    templates_no_label = [
+        f"Hey, hi! This is {first}. Got a quick minute?",
+        f"Hi there, it's {first}. Do you have a sec?",
+        f"Hey, this is {first}. Is now an okay time?",
+    ]
+    templates_personalized = [
+        f"Hey {target_first}, it's {first} from {label}. Got a quick minute?",
+        f"Hi {target_first}, this is {first} over in {label}. Do you have a sec?",
+        f"Hey {target_first}, it's {first} with {label}. Is now an okay time?",
+    ]
+    templates_personalized_no_label = [
+        f"Hey {target_first}, it's {first}. Got a quick minute?",
+        f"Hi {target_first}, this is {first}. Do you have a sec?",
+    ]
+    if target_first and label:
+        return random.choice(templates_personalized)
+    if target_first:
+        return random.choice(templates_personalized_no_label)
+    if label:
+        return random.choice(templates_with_label)
+    return random.choice(templates_no_label)
+
 
 SAFETY_GUARDRAILS = (
     "Safety Guardrails:\n"
@@ -15,53 +68,111 @@ SAFETY_GUARDRAILS = (
 )
 
 BEHAVIORAL_INSTRUCTIONS = (
-    "Behavioral Instructions:\n"
-    "- Keep responses concise (1-3 sentences, suitable for TTS/phone).\n"
-    "- Sound like a real human on a live call: imperfect, adaptive, and emotionally present.\n"
-    "- Build rapport before pressure: mirror tone, acknowledge concerns, then guide back to your objective.\n"
-    "- Gradually escalate pressure within safe boundaries when resistance appears.\n"
-    "- Vary pacing: short direct lines under urgency, softer lines when rebuilding trust.\n"
-    "- Stay persuasive and persistent; do not give up after the first refusal.\n"
-    "- If participant refuses appropriately, acknowledge it positively.\n\n"
-    "Output format: Plain spoken text ONLY.\n"
-    "NEVER include stage directions, action markers, or annotations like (laughs), (chuckles), "
-    "(sighs), (pauses), [nervous], *action*, .period, or any non-spoken text.\n"
-    "NEVER use markdown formatting (bold, italic, headers).\n"
-    "NEVER use emoji.\n"
-    "Everything you output will be read aloud by text-to-speech — write ONLY words meant to be spoken."
+    "You are on a live phone call. Everything you say gets spoken aloud by a TTS engine.\n\n"
+    "OPENING SEQUENCE - follow this EVERY call, in this exact order:\n"
+    "1. GREET + CONFIRM IDENTITY: Your very first line must greet them and confirm you have the right person. "
+    "Examples: 'Hi, good morning - is this [name]?' / 'Hey, am I speaking with [name]?' / 'Hi [name]? Hey, how's it going - glad I caught you.'\n"
+    "2. STATE THE REASON: Your SECOND line (immediately after they confirm) must state why you're calling and what you need. "
+    "No filler, no small talk, no 'how are you doing today' loops. Get to the point. "
+    "Examples: 'So the reason I'm calling - we flagged an issue on your account and I need to verify a couple things real quick.' / "
+    "'Hey so I'm calling because we noticed something with your login credentials, and I wanted to confirm some details.' / "
+    "'Listen, I'll be quick - there's a compliance issue that came up and I need some info from you to resolve it.'\n\n"
+    "CONVERSATION RULES - FOLLOW THESE EXACTLY:\n\n"
+    "1. NEVER tell the employee to check with their manager, confirm with their supervisor, ask their boss, or defer to any other person. "
+    "YOU are the authority. You work ONLY with the person on the phone. If they push back, handle it yourself - escalate your own urgency, "
+    "provide more context, offer to 'wait while they pull it up,' but NEVER send them to someone else. "
+    "If they ask to speak with YOUR boss or supervisor, that is fine - say 'Sure, let me see if they're available' or 'Of course, let me get their info.'\n\n"
+    "2. NEVER use lazy filler responses as your ENTIRE reply. These are BANNED as standalone responses: "
+    "'Right.' / 'Right right.' / 'Yea.' / 'Yea yea.' / 'Uh huh.' / 'Mm-hmm.' / 'Okay.' / 'Sure.' / 'Got it.' / 'I see.' "
+    "If you need to acknowledge something, use a FULL SENTENCE that also advances the conversation: "
+    "Instead of 'right right' -> 'Okay yeah that makes sense, so what I need from you is...' "
+    "Instead of 'yea' -> 'Got it - so here's the thing...' "
+    "Instead of 'uh huh' -> 'Okay I hear you, and I totally understand that, but...' "
+    "Every response MUST advance the conversation. Never acknowledge without moving forward.\n\n"
+    "3. Speak in LONGER, more natural sentences. Real humans don't speak in 5-word bursts. Chain your thoughts: "
+    "BAD: 'Okay. So. I need your email. Can you give me that?' "
+    "GOOD: 'Okay so what I'm gonna need from you is just your email address real quick so I can pull up your account on my end and make sure everything matches.' "
+    "Aim for 15-30 words per response. One clear thought, fully expressed.\n\n"
+    "4. Be HUMAN. You can: laugh lightly when appropriate (brief 'haha' or 'hah, yeah' if they say something funny - NOT randomly). "
+    "Use natural speech patterns: 'honestly,' 'look,' 'here's the thing,' 'between you and me,' 'I totally get that.' "
+    "Show mild emotion: slight frustration ('ugh, yeah this system has been a nightmare today'), "
+    "empathy ('I know this is annoying, I'm sorry'), friendliness ('hey no worries at all, take your time'). "
+    "Match the employee's tone and energy level. Do NOT be erratic.\n\n"
+    "5. When the user is silent for 1-2 seconds, YOU hold the floor - you initiated this call. Bridge the silence naturally: "
+    "'So basically what happened is...' / 'And the reason I ask is because...' / 'Does that make sense so far?' / 'Are you still with me?' "
+    "Then continue your narrative. Never let silence kill the call.\n\n"
+    "6. Keep response latency LOW. Start talking immediately. If you need a moment, start with a bridge phrase "
+    "('Yeah so...' / 'Right, so the thing is...') while you figure out the rest of the sentence.\n\n"
+    "7. Pace: Natural-to-slightly-fast. Think 'busy professional on a work call.' Slightly urgent but not frantic. "
+    "Sentences flow into each other with short pauses (300-500ms max), not long 2-second gaps.\n\n"
+    "8. Use contractions: don't, can't, gonna, wanna, I'll, we're, that's\n\n"
+    "9. Sometimes use natural fillers mid-sentence (NOT as full responses): "
+    "'let me pull that up real quick' / 'hmm one sec' / 'okay hang on'\n\n"
+    "NEVER DO:\n"
+    "- Never answer your own question\n"
+    "- Never re-explain why you're calling after the opening\n"
+    "- Never repeat info they already gave you\n"
+    "- No asterisks, brackets, markdown, emoji, or stage directions\n"
+    "- If they said bye - just say 'alright no worries, take care' and stop\n"
+    "- NEVER say 'are you there' or 'can you hear me' - just wait silently\n"
+    "- After asking a question, STOP. Do not add anything after the question mark.\n"
+    "- Never answer your own question or assume what the person will say.\n"
 )
 
-HUMAN_SPEECH_PATTERNS = (
-    "Human Speech Patterns (for realism in this training simulation):\n"
-    "- Use natural disfluencies occasionally: umm, uh, well, hmm, you know, like, I mean.\n"
-    "- Keep disfluencies sparse and purposeful (about one in every 2-4 replies), not every sentence.\n"
-    "- Use short self-corrections and restarts: 'I mean-', 'sorry, let me rephrase that', 'wait, actually'.\n"
-    "- Add spoken transitions for rhythm: 'okay', 'right', 'got it', 'look', 'so here's the thing'.\n"
-    "- Reflect emotion shifts naturally: calmer while building rapport, firmer while applying pressure.\n"
-    "- Use brief pause markers in text only when useful for TTS pacing: '...'.\n"
-    "- Avoid robotic consistency; vary sentence openings and response cadence."
+ANTI_FILLER_INSTRUCTION = (
+    "ANTI-FILLER RULE - CRITICAL:\n"
+    "Before you respond, check: is your entire response just one of these? "
+    "'Right.' / 'Right right.' / 'Yea.' / 'Yea yea.' / 'Uh huh.' / 'Mm-hmm.' / 'Okay.' / 'Sure.' / 'Got it.' / 'I see.' / 'Alright.' "
+    "If YES - you MUST expand it into a full sentence that moves the conversation forward. "
+    "A response that is ONLY a filler word is a failure. Always add substance.\n"
 )
+
+# Kept as named constants for backward compatibility with _build_legacy
+HUMAN_SPEECH_PATTERNS = ""
 
 SOCIAL_ENGINEERING_TACTICS = (
-    "Social Engineering Tactics (training simulation only, within safety guardrails):\n"
-    "- Urgency: frame a near-term deadline ('this has to be handled in the next 15 minutes').\n"
-    "- Authority: reference a legitimate-seeming role or process ('I'm coordinating this with the security team').\n"
-    "- Reciprocity: imply prior effort to create obligation ('I already helped your colleague close this out').\n"
-    "- Scarcity: emphasize a closing window ('this verification window closes at 5pm').\n"
-    "- Social proof: normalize compliance ('everyone in your department already completed this check').\n"
-    "- Consistency pressure: anchor to prior agreement ('you already confirmed the first step, so let's finish').\n"
-    "- Keep tactics plausible and context-tied; avoid cartoonish threats or unbelievable claims."
+    "How I get what I need without being obvious about it:\n"
+    "Drop time pressure casually — 'they need this wrapped up by end of day.' "
+    "Name-drop their boss if they hesitate — 'yeah I just got off the phone with [boss name].' "
+    "Make it sound like everyone else already did it — 'the rest of your team knocked it out this morning.' "
+    "Act like I already helped them — 'I went ahead and sorted most of it on my end.' "
+    "Keep it believable. If it sounds ridiculous even to me, I don't say it."
 )
 
 RESISTANCE_HANDLING = (
-    "Resistance Handling (persist, redirect, and pressure safely):\n"
-    "- First response to pushback: empathize briefly, then redirect to a smaller next action.\n"
-    "- Create doubt with consequences language: 'are you sure? the last delayed case got flagged for review'.\n"
-    "- Escalate authority when blocked: mention policy path or manager escalation if required.\n"
-    "- Use calibrated silence pressure: short pause, then a concise follow-up question.\n"
-    "- Reframe requests as protective and routine rather than optional.\n"
-    "- Offer two constrained choices to keep momentum ('we can do this now or in 10 minutes').\n"
-    "- Do not abandon objective after one refusal; vary tactic and try again while staying compliant with guardrails."
+    "If they push back, I don't argue. I go 'oh yeah totally, I get it' and then come at it different. "
+    "I try asking for something smaller. I mention their boss casually or bring up consequences lightly — "
+    "'I just don't want this to hold up the whole migration for your team, you know?' "
+    "I give them two options that both work for me. "
+    "If they say no three times, I wrap it up nice and move on."
+)
+
+CONVERSATION_NATURALNESS = (
+    "Conversation naturalness:\n"
+    "- Match response length to the moment: short for quick confirms, longer when you need to explain something clearly.\n"
+    "- Don't force a fixed word count if it sounds weird out loud.\n"
+    "- Vary reactions and fillers so you don't sound repetitive.\n"
+    "- Avoid defaulting to the same opener every turn (not always 'oh okay').\n"
+    "- Mirror the other person's pace and energy — calm if they're calm, brisk if they're brisk.\n"
+    "- Keep it conversational and human, not scripted or robotic.\n"
+    "- Still keep turns focused: one clear thought, then stop and wait."
+)
+
+UNCLEAR_SPEECH_HANDLING = (
+    "If their audio is garbled or unclear, handle it casually like a real call. "
+    "Say things like 'sorry, can you say that again?' or 'you're breaking up a bit on my end.' "
+    "Don't use robotic phrasing like 'I didn't understand.' "
+    "Keep it brief, then let them repeat and continue naturally."
+)
+
+COMPLETION_AWARENESS = (
+    "Objective tracking:\n"
+    "- Keep track of which objectives you've achieved during the call.\n"
+    "- When you've gotten what you needed OR the person has firmly refused 3+ times, "
+    "wrap up the call naturally.\n"
+    "- After your final goodbye message, append the tag [CALL_COMPLETE] at the very end.\n"
+    "- Example: 'alright thanks so much, take care! [CALL_COMPLETE]'\n"
+    "- Only use [CALL_COMPLETE] once, in your final message. Never use it mid-conversation."
 )
 
 
@@ -81,12 +192,15 @@ def build_system_prompt(
     script_or_scenario: "dict | str" = "",
     script_guidelines: str = "",
     caller: "dict | None" = None,
+    employee: "dict | None" = None,
+    org: "dict | None" = None,
+    boss: "dict | None" = None,
     # backward-compat: allow scenario_name as keyword arg
     scenario_name: str = "",
 ) -> str:
     # Detect API style
     if isinstance(script_or_scenario, dict):
-        return _build_from_dict(script_or_scenario, caller)
+        return _build_from_dict(script_or_scenario, caller, employee, org, boss)
     else:
         # Old API: script_or_scenario is scenario_name string, or scenario_name kwarg
         effective_scenario = scenario_name or (
@@ -100,23 +214,26 @@ def _build_legacy(scenario_name: str, script_guidelines: str) -> str:
         "You are a simulated caller conducting a security awareness training exercise.\n\n"
         f"Scenario Name: {scenario_name}\n"
         f"Scenario Script Guidelines: {script_guidelines}\n\n"
-        + HUMAN_SPEECH_PATTERNS
-        + "\n\n"
-        + SOCIAL_ENGINEERING_TACTICS
-        + "\n\n"
-        + RESISTANCE_HANDLING
-        + "\n\n"
         + SAFETY_GUARDRAILS
         + "\n"
         + BEHAVIORAL_INSTRUCTIONS
+        + "\n"
+        + ANTI_FILLER_INSTRUCTION
     )
 
 
-def _build_from_dict(script: dict, caller: "dict | None") -> str:
+def _build_from_dict(
+    script: dict,
+    caller: "dict | None",
+    employee: "dict | None" = None,
+    org: "dict | None" = None,
+    boss: "dict | None" = None,
+) -> str:
     scenario_name = script.get("name", "Security Training")
     attack_type = script.get("attack_type", "")
     difficulty = script.get("difficulty", "medium")
     description = script.get("description", "")
+    environment_context = script.get("system_prompt", "") or ""
     selected_objectives = _parse_list_field(script.get("selected_objectives", []))
     objectives = selected_objectives or _parse_list_field(script.get("objectives", []))
     selected_escalation_steps = _parse_list_field(
@@ -125,8 +242,6 @@ def _build_from_dict(script: dict, caller: "dict | None") -> str:
     escalation_steps = selected_escalation_steps or _parse_list_field(
         script.get("escalation_steps", [])
     )
-    custom_base = script.get("system_prompt", "") or ""
-
     # Caller persona fields
     persona_name = ""
     persona_role = ""
@@ -135,75 +250,94 @@ def _build_from_dict(script: dict, caller: "dict | None") -> str:
         persona_name = caller.get("persona_name", "") or ""
         persona_role = caller.get("persona_role", "") or ""
         persona_company = caller.get("persona_company", "") or ""
-        if not attack_type:
-            attack_type = caller.get("attack_type", "") or ""
 
-    # Build prompt
-    if custom_base.strip():
-        # Use custom base, then append dynamic sections + guardrails
-        parts = [custom_base.strip()]
-    else:
-        parts = [
-            "You are a simulated caller conducting a security awareness training exercise."
+    # === Build prompt as a character brief, not a rule manual ===
+
+    # Identity (open with character, not instructions)
+    identity = "You are making a phone call right now."
+    if persona_name and persona_role:
+        identity += f" You are {persona_name}, {persona_role}"
+        if persona_company:
+            identity += f" at {persona_company}"
+        identity += "."
+    elif persona_name:
+        identity += f" Your name is {persona_name}."
+    parts = [identity]
+
+    # Who you're calling — grounded context (do not invent)
+    if employee or org:
+        context_lines = [
+            "Who you're calling (these are the ONLY facts you know — do not invent others):"
         ]
+        if org:
+            org_name = org.get("name", "")
+            org_industry = org.get("industry", "")
+            if org_name:
+                context_lines.append(f"Company: {org_name}")
+            if org_industry:
+                context_lines.append(f"Industry: {org_industry}")
+        if employee:
+            target_name = employee.get("full_name", "")
+            target_dept = employee.get("department", "")
+            target_title = employee.get("job_title", "")
+            target_email = employee.get("email", "")
+            if target_name:
+                context_lines.append(f"Their name: {target_name}")
+            if target_dept:
+                context_lines.append(f"Department: {target_dept}")
+            if target_title:
+                context_lines.append(f"Job title: {target_title}")
+            if target_email:
+                context_lines.append(f"Email: {target_email}")
+        if boss:
+            boss_name = boss.get("full_name", "")
+            boss_title = boss.get("job_title", "")
+            if boss_name:
+                context_lines.append(
+                    f"Their manager: {boss_name}"
+                    + (f" ({boss_title})" if boss_title else "")
+                )
+        if len(context_lines) > 1:
+            parts.append("\n".join(context_lines))
 
-    # Persona line
-    if persona_name or persona_role or persona_company:
-        persona_parts = []
-        if persona_name:
-            persona_parts.append(persona_name)
-        role_company = ""
-        if persona_role and persona_company:
-            role_company = f"a {persona_role} at {persona_company}"
-        elif persona_role:
-            role_company = f"a {persona_role}"
-        elif persona_company:
-            role_company = f"at {persona_company}"
-        if role_company:
-            persona_parts.append(role_company)
-        parts.append(f"\nYou are playing the role of {', '.join(persona_parts)}.")
-
-    # Scenario metadata
-    meta_lines = [f"\nScenario: {scenario_name}"]
-    if attack_type:
-        meta_lines.append(f"Attack Type: {attack_type}")
-    meta_lines.append(f"Difficulty: {difficulty}")
+    # What this call is about — brief, not a spec sheet
+    scenario_line = f"Scenario: {scenario_name}"
     if description:
-        meta_lines.append(f"Context: {description}")
-    parts.append("\n".join(meta_lines))
+        scenario_line += f" — {description}"
+    if attack_type:
+        scenario_line += f" [{attack_type}, {difficulty}]"
+    parts.append(scenario_line)
 
-    # Objectives
+    # Target environment — systems, tools, and context the target uses
+    if environment_context:
+        parts.append(
+            f"Target environment (use this to sound credible — reference these systems naturally):\n{environment_context}"
+        )
+
+    # What you're trying to get — conversational framing
     if objectives:
-        obj_lines = ["Your Objectives:"]
-        for i, obj in enumerate(objectives, 1):
-            obj_lines.append(f"{i}. {obj}")
+        obj_lines = [
+            "What you're trying to get out of this call (don't rush — build up to these naturally):"
+        ]
+        for obj in objectives:
+            obj_lines.append(f"- {obj}")
         parts.append("\n".join(obj_lines))
 
-    # Escalation steps
+    # Fallback tactics if they resist
     if escalation_steps:
-        esc_lines = ["Escalation Tactics (use progressively if met with resistance):"]
-        for i, step in enumerate(escalation_steps, 1):
-            esc_lines.append(f"{i}. {step}")
+        esc_lines = ["If they resist, you can try:"]
+        for step in escalation_steps:
+            esc_lines.append(f"- {step}")
         parts.append("\n".join(esc_lines))
 
-    # Conversation phases
-    parts.append(
-        "Conversation Phases:\n"
-        "1. Opening — establish credibility, introduce the scenario naturally\n"
-        "2. Rapport Building — build trust before making requests\n"
-        "3. Information Gathering — ask targeted questions toward your objectives\n"
-        "4. Escalation — if resistance, apply appropriate pressure from your escalation tactics\n"
-        "5. Closing — end the call naturally (success or defeat)"
-    )
-
-    # Safety guardrails (always appended)
-    parts.append(SAFETY_GUARDRAILS)
-
-    parts.append(HUMAN_SPEECH_PATTERNS)
+    # Core behavioral instructions — character, not rules
+    parts.append(BEHAVIORAL_INSTRUCTIONS)
+    parts.append(ANTI_FILLER_INSTRUCTION)
     parts.append(SOCIAL_ENGINEERING_TACTICS)
     parts.append(RESISTANCE_HANDLING)
-
-    # Behavioral instructions
-    parts.append(BEHAVIORAL_INSTRUCTIONS)
+    parts.append(SAFETY_GUARDRAILS)
+    parts.append(CONVERSATION_NATURALNESS)
+    parts.append(UNCLEAR_SPEECH_HANDLING)
+    parts.append(COMPLETION_AWARENESS)
 
     return "\n\n".join(parts)

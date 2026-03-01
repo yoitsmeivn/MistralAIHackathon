@@ -13,6 +13,7 @@ import {
   Loader2,
   FileText,
   Shield,
+  Plus,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -53,6 +54,7 @@ import {
   getCallers,
   getEmployees,
   launchCampaign,
+  createScript,
   updateScript,
   updateCampaign,
 } from "../services/api";
@@ -109,11 +111,11 @@ export function CampaignDetail() {
 
   // Script detail/edit dialog state
   const [editingScript, setEditingScript] = useState<Script | null>(null);
+  const [isNewScript, setIsNewScript] = useState(false);
   const [scriptForm, setScriptForm] = useState({
     name: "",
     attack_type: "",
-    difficulty: "",
-    system_prompt: "",
+    difficulty: "medium",
     objectives: "",
     escalation_steps: "",
     description: "",
@@ -253,15 +255,28 @@ export function CampaignDetail() {
   };
 
   const handleOpenScript = (script: Script) => {
+    setIsNewScript(false);
     setEditingScript(script);
     setScriptForm({
       name: script.name,
       attack_type: script.attackType,
       difficulty: script.difficulty,
-      system_prompt: script.systemPrompt,
       objectives: script.objectives.join(", "),
       escalation_steps: script.escalationSteps.join(", "),
       description: script.description,
+    });
+  };
+
+  const handleNewScript = () => {
+    setIsNewScript(true);
+    setEditingScript({} as Script);
+    setScriptForm({
+      name: "",
+      attack_type: "",
+      difficulty: "medium",
+      objectives: "",
+      escalation_steps: "",
+      description: "",
     });
   };
 
@@ -269,19 +284,24 @@ export function CampaignDetail() {
     if (!editingScript) return;
     setSaving(true);
     try {
-      await updateScript(editingScript.id, {
+      const payload = {
         name: scriptForm.name,
         attack_type: scriptForm.attack_type,
         difficulty: scriptForm.difficulty,
-        system_prompt: scriptForm.system_prompt,
         objectives: scriptForm.objectives.split(",").map((s) => s.trim()).filter(Boolean),
         escalation_steps: scriptForm.escalation_steps.split(",").map((s) => s.trim()).filter(Boolean),
         description: scriptForm.description,
-      });
+      };
+      if (isNewScript) {
+        await createScript({ ...payload, campaign_id: id! });
+      } else {
+        await updateScript(editingScript.id, payload);
+      }
       setEditingScript(null);
+      setIsNewScript(false);
       loadCampaignData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update script");
+      alert(err instanceof Error ? err.message : "Failed to save script");
     } finally {
       setSaving(false);
     }
@@ -480,14 +500,17 @@ export function CampaignDetail() {
       </motion.div>
 
       {/* Scripts Card */}
-      {campaignScripts.length > 0 && (
         <motion.div variants={item}>
           <Card className="mb-6">
-            <CardHeader className="border-b pb-4">
+            <CardHeader className="border-b pb-4 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 Attack Scripts ({campaignScripts.length})
               </CardTitle>
+              <Button variant="outline" size="sm" onClick={handleNewScript}>
+                <Plus className="w-3.5 h-3.5" />
+                New Script
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -535,7 +558,6 @@ export function CampaignDetail() {
             </CardContent>
           </Card>
         </motion.div>
-      )}
 
       {/* Call Results Table */}
       <motion.div variants={item}>
@@ -708,9 +730,11 @@ export function CampaignDetail() {
       <Dialog open={!!editingScript} onOpenChange={(open) => !open && setEditingScript(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Script Details</DialogTitle>
+            <DialogTitle>{isNewScript ? "New Script" : "Script Details"}</DialogTitle>
             <DialogDescription>
-              View and edit the script configuration for this attack scenario.
+              {isNewScript
+                ? `Create a new attack script for ${campaign.name}.`
+                : "View and edit the script configuration for this attack scenario."}
             </DialogDescription>
           </DialogHeader>
 
@@ -781,16 +805,6 @@ export function CampaignDetail() {
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">System Prompt</label>
-              <textarea
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono text-xs"
-                rows={6}
-                value={scriptForm.system_prompt}
-                onChange={(e) => setScriptForm({ ...scriptForm, system_prompt: e.target.value })}
-              />
-            </div>
-
-            <div>
               <label className="block text-xs text-muted-foreground mb-1.5">
                 Escalation Steps <span className="text-muted-foreground/60">(comma-separated)</span>
               </label>
@@ -804,15 +818,20 @@ export function CampaignDetail() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingScript(null)}>
+            <Button variant="outline" onClick={() => { setEditingScript(null); setIsNewScript(false); }}>
               Cancel
             </Button>
-            <Button onClick={handleSaveScript} disabled={saving}>
+            <Button
+              onClick={handleSaveScript}
+              disabled={saving || !scriptForm.name}
+            >
               {saving ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Saving...
                 </>
+              ) : isNewScript ? (
+                "Create Script"
               ) : (
                 "Save Changes"
               )}
