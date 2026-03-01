@@ -316,19 +316,12 @@ def list_calls(
 
 
 def get_call_by_sid(twilio_call_sid: str) -> dict | None:
-    """Look up a call by its Twilio CallSid stored in phone_from metadata.
-
-    Note: the canonical schema does not include a twilio_call_sid column.
-    This helper performs a lookup via a Supabase RPC or filter that
-    the deployment must support (e.g. a generated column or index).
-    For now it falls back to scanning recent pending/ringing calls.
-    """
+    """Look up a call by its Twilio CallSid."""
     result = _execute(
         get_supabase()
         .table("calls")
         .select("*")
-        .eq("status", "ringing")
-        .order("created_at", desc=True)
+        .eq("twilio_call_sid", twilio_call_sid)
         .limit(1),
         "get_call_by_sid",
     )

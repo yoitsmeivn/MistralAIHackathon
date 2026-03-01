@@ -130,7 +130,8 @@ create table if not exists calls (
     ai_summary text,
     sentiment_analysis jsonb,
     created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
+    updated_at timestamptz not null default now(),
+    twilio_call_sid text
 );
 
 create index if not exists idx_employees_org_id on employees(org_id);
@@ -142,3 +143,4 @@ create index if not exists idx_calls_org_id on calls(org_id);
 create index if not exists idx_calls_employee_id on calls(employee_id);
 create index if not exists idx_calls_campaign_id on calls(campaign_id);
 create index if not exists idx_calls_status on calls(status);
+create unique index if not exists idx_calls_twilio_call_sid on calls(twilio_call_sid) where twilio_call_sid is not null;
