@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.routes.analytics import router as analytics_router
 from app.routes.callers import router as callers_router
 from app.routes.calls import router as calls_router
 from app.routes.campaigns import router as campaigns_router
@@ -45,6 +46,7 @@ app.include_router(employees_router)
 app.include_router(callers_router)
 app.include_router(scripts_router)
 app.include_router(dashboard_router)
+app.include_router(analytics_router)
 app.include_router(twilio_router)
 
 

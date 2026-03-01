@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router";
 import { Plus, Search, Edit, Trash2, Upload } from "lucide-react";
 import { motion } from "motion/react";
 import { Card, CardContent } from "./ui/card";
@@ -221,9 +222,12 @@ export function Employees() {
                         {getInitials(employee.fullName)}
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-foreground">
+                        <Link
+                          to={`/employees/${employee.id}`}
+                          className="text-sm font-medium text-foreground hover:underline"
+                        >
                           {employee.fullName}
-                        </p>
+                        </Link>
                         <p className="text-xs text-muted-foreground">
                           {employee.jobTitle}
                         </p>

@@ -119,3 +119,108 @@ export interface CallsOverTime {
   passed: number;
   failed: number;
 }
+
+// ─── Analytics types ────────────────────────────────────────────────
+
+export interface RiskTrendPoint {
+  date: string;
+  avgRisk: number;
+  callCount: number;
+}
+
+export interface DepartmentTrendPoint {
+  date: string;
+  department: string;
+  totalCalls: number;
+  failedCalls: number;
+  failureRate: number;
+}
+
+export interface RepeatOffender {
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  totalTests: number;
+  failedTests: number;
+  failureRate: number;
+  mostRecentFailure: string;
+  commonFlags: string[];
+  riskScores: number[];
+}
+
+export interface CampaignEffectivenessItem {
+  campaignId: string;
+  campaignName: string;
+  attackVector: string;
+  totalCalls: number;
+  failedCalls: number;
+  passedCalls: number;
+  partialCalls: number;
+  failureRate: number;
+  avgRiskScore: number;
+  avgDurationSeconds: number;
+}
+
+export interface AttackVectorSummary {
+  attackVector: string;
+  totalCalls: number;
+  failureRate: number;
+  avgRiskScore: number;
+}
+
+export interface CampaignEffectivenessData {
+  campaigns: CampaignEffectivenessItem[];
+  byAttackVector: AttackVectorSummary[];
+}
+
+export interface FlagFrequency {
+  flag: string;
+  count: number;
+  percentage: number;
+  isPositive: boolean;
+}
+
+export interface HeatmapCell {
+  attackVector: string;
+  department: string;
+  totalCalls: number;
+  failureRate: number;
+  avgRiskScore: number;
+}
+
+export interface EmployeeCallHistoryItem {
+  id: string;
+  campaignName: string;
+  callerName: string;
+  attackVector: string;
+  status: string;
+  startedAt: string;
+  duration: string;
+  durationSeconds?: number;
+  riskScore: number;
+  employeeCompliance: string;
+  flags: string[];
+  aiSummary: string;
+}
+
+export interface EmployeeAnalytics {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  department: string;
+  jobTitle: string;
+  riskLevel: string;
+  isActive: boolean;
+  totalTests: number;
+  passedTests: number;
+  failedTests: number;
+  partialTests: number;
+  failureRate: number;
+  avgRiskScore: number;
+  riskScoreTrend: number[];
+  riskScoreDates: string[];
+  complianceBreakdown: Record<string, number>;
+  flagSummary: FlagFrequency[];
+  calls: EmployeeCallHistoryItem[];
+}
