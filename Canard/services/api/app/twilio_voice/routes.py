@@ -411,7 +411,8 @@ async def twilio_recording(
                     recording_response = await client.get(download_url)
                     recording_response.raise_for_status()
 
-                storage_path = f"{call['id']}/{RecordingSid}.wav"
+                employee_id = call.get("employee_id") or ""
+                storage_path = f"{employee_id}/{employee_id}.wav" if employee_id else f"{call['id']}/{RecordingSid}.wav"
                 upload_options: dict[str, str] = {
                     "content-type": "audio/wav",
                     "upsert": "true",

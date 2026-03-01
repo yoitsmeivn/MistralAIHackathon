@@ -189,6 +189,16 @@ def list_employees_by_department(org_id: str, department: str) -> list[dict]:
     return result if isinstance(result, list) else []
 
 
+def update_employee_voice_id(employee_id: str, voice_id: str) -> dict:
+    """Update the ElevenLabs voice_id for an employee (used for voice cloning)."""
+    result = _execute(
+        get_supabase().table("employees").update({"voice_id": voice_id}).eq("id", employee_id),
+        "update_employee_voice_id",
+    )
+    row = _first_or_none(result)
+    return row or {}
+
+
 # ── Callers ──
 
 

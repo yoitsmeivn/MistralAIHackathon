@@ -30,6 +30,7 @@ from app.routes.health import router as health_router
 from app.routes.scripts import router as scripts_router
 from app.streaming.routes import router as monitor_router
 from app.twilio_voice.routes import router as twilio_router
+from app.routes.voice_cloning import router as voice_cloning_router
 
 
 @asynccontextmanager
@@ -71,6 +72,7 @@ app.include_router(dashboard_router)
 app.include_router(analytics_router)
 app.include_router(twilio_router)
 app.include_router(monitor_router)
+app.include_router(voice_cloning_router)
 
 
 if __name__ == "__main__":
