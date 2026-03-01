@@ -240,17 +240,19 @@ async def twilio_status(
         summary = session.to_summary_dict() if session else {}
         LOGGER.info("Call completed — summary: %s", json.dumps(summary, default=str))
 
-        # TODO(db): Persist call completion data:
-        #   update_call(call_id, {status, ended_at, recording_url, duration})
-        #   For each turn in session.turns:
-        #       create_turn({call_id, role, text_redacted, turn_index, ...})
-        _update_call_safe(
-            call_id,
-            {
-                "status": "completed",
-                "ended_at": datetime.now(timezone.utc).isoformat(),
-                "recording_url": RecordingUrl or None,
-            },
+        # Persist call completion data
+        update_data: dict = {
+            "status": "completed",
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+            "recording_url": RecordingUrl or None,
+        }
+        if recording_transcript:
+            update_data["transcript"] = recording_transcript
+        _update_call_safe(call_id, update_data)
+
+        # Fire post-call evaluation in the background
+        asyncio.create_task(
+            _run_evaluation_safe(call_id, recording_transcript)
         )
 
         # Clean up in-memory session
@@ -622,6 +624,33 @@ async def twilio_stream(websocket: WebSocket) -> None:
             "Twilio Media Stream closed: call_id=%s — %s",
             call_id,
             json.dumps(summary, default=str),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Post-call evaluation (fire-and-forget background task)
+# ---------------------------------------------------------------------------
+
+
+async def _run_evaluation_safe(
+    call_id: str, recording_transcript: str | None
+) -> None:
+    """Run post-call evaluation, catching all exceptions."""
+    try:
+        from app.services.evaluation import evaluate_call
+
+        result = await evaluate_call(call_id, recording_transcript)
+        if result:
+            LOGGER.info(
+                "Post-call evaluation succeeded for call %s: risk_score=%s",
+                call_id,
+                result.get("risk_score"),
+            )
+        else:
+            LOGGER.info("Post-call evaluation returned no result for call %s", call_id)
+    except Exception:
+        LOGGER.warning(
+            "Post-call evaluation failed for call %s", call_id, exc_info=True
         )
 
 

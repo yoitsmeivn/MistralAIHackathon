@@ -149,23 +149,38 @@ def _chat_kwargs(
     return kwargs
 
 
+def _fix_trailing_commas(s: str) -> str:
+    """Remove trailing commas before } or ] — common LLM JSON mistake."""
+    return re.sub(r",\s*([}\]])", r"\1", s)
+
+
 def _extract_json_object(content: str) -> dict:
     stripped = content.strip()
-    try:
-        parsed = json.loads(stripped)
-        if isinstance(parsed, dict):
-            return parsed
-    except json.JSONDecodeError:
-        pass
 
+    # Try raw first
+    for candidate in [stripped, _fix_trailing_commas(stripped)]:
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    # Try extracting the outermost {...}
     match = re.search(r"\{[\s\S]*\}", stripped)
     if not match:
         raise ValueError("Unable to parse JSON object from Mistral response")
 
-    parsed = json.loads(match.group(0))
-    if not isinstance(parsed, dict):
-        raise ValueError("Mistral response JSON is not an object")
-    return parsed
+    raw = match.group(0)
+    for candidate in [raw, _fix_trailing_commas(raw)]:
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError("Mistral response JSON could not be parsed")
 
 
 @_op
@@ -214,6 +229,32 @@ async def chat_completion_stream(
         chunk = _coerce_text_content(content)
         if chunk:
             yield chunk
+
+
+@_op
+async def chat_completion_json(
+    messages: list[dict],
+    model: str | None = None,
+    temperature: float = 0.1,
+    max_tokens: int | None = None,
+) -> dict:
+    """Chat completion with JSON mode, falling back to plain completion + extraction."""
+    try:
+        client = _get_client()
+        kwargs = _chat_kwargs(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        response = await _with_retry(lambda: client.chat.complete_async(**kwargs))
+        return _extract_json_object(_extract_response_text(response))
+    except Exception:
+        content = await chat_completion(
+            messages=messages, model=model, temperature=temperature, max_tokens=max_tokens
+        )
+        return _extract_json_object(content)
 
 
 @_op
