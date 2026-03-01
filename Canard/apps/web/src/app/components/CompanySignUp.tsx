@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
-import { Building2, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { Link } from "react-router";
+import { Building2, ArrowLeft, Eye, EyeOff, MailCheck } from "lucide-react";
 import { motion } from "motion/react";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Button } from "./ui/button";
-import { useAuth } from "../contexts/AuthContext";
+import { supabase } from "../lib/supabase";
 import logoImg from "../../../CanardSecurityTransparent.png";
 
 const PUBLIC_DOMAINS = new Set([
@@ -44,23 +44,29 @@ export function CompanySignUp() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { signIn } = useAuth();
-  const navigate = useNavigate();
+  const [emailSent, setEmailSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      // 1. Register org via backend
+      // 1. Create auth user via Supabase (sends confirmation email)
+      const { data: signUpData, error: signUpError } =
+        await supabase.auth.signUp({ email, password });
+      if (signUpError) throw signUpError;
+      const userId = signUpData.user?.id;
+      if (!userId) throw new Error("Signup failed — no user returned");
+
+      // 2. Create org + public.users record via backend
       const res = await fetch("/api/auth/register-org", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          user_id: userId,
           company_name: companyName,
           industry,
           email,
-          password,
           full_name: fullName,
         }),
       });
@@ -69,9 +75,8 @@ export function CompanySignUp() {
         throw new Error(data.detail || `Registration failed (${res.status})`);
       }
 
-      // 2. Sign in to get session
-      await signIn(email, password);
-      navigate("/", { replace: true });
+      // 3. Show "check your email" message
+      setEmailSent(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Registration failed";
       setError(msg);
@@ -124,6 +129,24 @@ export function CompanySignUp() {
             />
           </div>
 
+          {emailSent ? (
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="rounded-full bg-green-100 p-3 mb-4">
+                <MailCheck className="size-6 text-green-600" />
+              </div>
+              <h1 className="text-xl font-medium text-foreground mb-2">Check Your Email</h1>
+              <p className="text-sm text-muted-foreground mb-6">
+                We've sent a verification link to <strong>{email}</strong>. Click the link to confirm your email and sign in.
+              </p>
+              <Link
+                to="/login"
+                className="text-sm text-foreground font-medium hover:underline underline-offset-4"
+              >
+                Go to sign in
+              </Link>
+            </div>
+          ) : (
+          <>
           <div className="text-center mb-8">
             <h1 className="text-xl font-medium text-foreground">Register Your Company</h1>
             <p className="text-sm text-muted-foreground mt-1">
@@ -250,6 +273,8 @@ export function CompanySignUp() {
               Sign in
             </Link>
           </p>
+          </>
+          )}
         </div>
 
         <p className="text-center text-xs text-muted-foreground/50 mt-6">

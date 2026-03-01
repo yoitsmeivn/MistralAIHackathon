@@ -109,7 +109,6 @@ export async function getOrgUsers(): Promise<OrgUser[]> {
 
 export async function createOrgUser(data: {
   email: string;
-  password: string;
   full_name: string;
 }): Promise<OrgUser> {
   return apiFetch<OrgUser>("/api/auth/users", {

@@ -10,6 +10,7 @@ from app.db.client import get_supabase
 from app.db import queries
 from app.auth.middleware import CurrentUser
 from app.auth.domain import extract_domain, validate_corporate_email
+from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -18,16 +19,15 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class RegisterOrgRequest(BaseModel):
+    user_id: str
     company_name: str
     industry: str
     email: EmailStr
-    password: str
     full_name: str
 
 
 class CreateUserRequest(BaseModel):
     email: EmailStr
-    password: str
     full_name: str
 
 
@@ -68,50 +68,50 @@ async def register_org(req: RegisterOrgRequest) -> dict:
 
     sb = get_supabase()
 
-    # 1. Create Supabase auth user (service_role auto-confirms)
+    # 1. Verify the auth user exists (created by frontend via supabase.auth.signUp)
     try:
-        auth_resp = sb.auth.admin.create_user(
-            {
-                "email": req.email,
-                "password": req.password,
-                "email_confirm": True,
-            }
-        )
+        auth_resp = sb.auth.admin.get_user_by_id(req.user_id)
     except Exception as exc:
-        detail = str(exc)
-        if "already" in detail.lower() or "duplicate" in detail.lower():
-            raise HTTPException(status_code=409, detail="Email already registered") from exc
-        raise HTTPException(status_code=400, detail=f"Failed to create auth user: {detail}") from exc
+        raise HTTPException(status_code=400, detail="Invalid user ID") from exc
 
-    auth_user = auth_resp.user
-    if not auth_user:
-        raise HTTPException(status_code=500, detail="Auth user creation returned no user")
+    if not auth_resp or not auth_resp.user:
+        raise HTTPException(status_code=400, detail="Auth user not found")
 
     # 2. Create organization with domain
     slug = _slugify(req.company_name)
-    org = queries.create_organization(
-        {
-            "name": req.company_name,
-            "slug": slug,
-            "industry": req.industry,
-            "domain": domain,
-        }
-    )
-    if not org or not org.get("id"):
-        raise HTTPException(status_code=500, detail="Failed to create organization")
+    try:
+        org = queries.create_organization(
+            {
+                "name": req.company_name,
+                "slug": slug,
+                "industry": req.industry,
+                "domain": domain,
+            }
+        )
+        if not org or not org.get("id"):
+            raise HTTPException(status_code=500, detail="Failed to create organization")
 
-    # 3. Create public.users record linked to org (use Supabase auth UUID as id)
-    user = queries.create_user(
-        {
-            "id": str(auth_user.id),
-            "org_id": org["id"],
-            "email": req.email,
-            "password_hash": "managed_by_supabase",
-            "full_name": req.full_name,
-            "role": "admin",
-            "is_active": True,
-        }
-    )
+        # 3. Create public.users record linked to org
+        user = queries.create_user(
+            {
+                "id": req.user_id,
+                "org_id": org["id"],
+                "email": req.email,
+                "password_hash": "managed_by_supabase",
+                "full_name": req.full_name,
+                "role": "admin",
+                "is_active": True,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Clean up auth user if org/user creation fails
+        try:
+            sb.auth.admin.delete_user(req.user_id)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Registration failed") from exc
 
     return {
         "user_id": user.get("id"),
@@ -165,41 +165,29 @@ async def create_org_user(req: CreateUserRequest, user: CurrentUser) -> dict:
     if not org_id:
         raise HTTPException(status_code=400, detail="User has no organization")
 
-    # Validate new user's domain matches org domain
-    org = queries.get_organization(org_id)
-    if not org:
-        raise HTTPException(status_code=500, detail="Organization not found")
-
-    org_domain = org.get("domain")
-    new_user_domain = extract_domain(req.email)
-    if org_domain and new_user_domain != org_domain:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Email domain must match your organization's domain ({org_domain})",
-        )
+    # Validate new user has a corporate email (not personal)
+    validate_corporate_email(req.email)
 
     sb = get_supabase()
 
-    # Create Supabase auth user
+    # Send invite email via Supabase (creates auth user + sends email)
+    redirect_url = f"{settings.app_url}/invite/accept"
     try:
-        auth_resp = sb.auth.admin.create_user(
-            {
-                "email": req.email,
-                "password": req.password,
-                "email_confirm": True,
-            }
+        auth_resp = sb.auth.admin.invite_user_by_email(
+            req.email,
+            {"redirect_to": redirect_url},
         )
     except Exception as exc:
         detail = str(exc)
         if "already" in detail.lower() or "duplicate" in detail.lower():
             raise HTTPException(status_code=409, detail="Email already registered") from exc
-        raise HTTPException(status_code=400, detail=f"Failed to create auth user: {detail}") from exc
+        raise HTTPException(status_code=400, detail=f"Failed to invite user: {detail}") from exc
 
     auth_user = auth_resp.user
     if not auth_user:
-        raise HTTPException(status_code=500, detail="Auth user creation returned no user")
+        raise HTTPException(status_code=500, detail="Invite returned no user")
 
-    # Create public.users record
+    # Create public.users record (user appears in team list immediately)
     new_user = queries.create_user(
         {
             "id": str(auth_user.id),

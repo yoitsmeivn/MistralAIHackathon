@@ -1,4 +1,5 @@
-import { createBrowserRouter, Navigate, Outlet } from "react-router";
+import { createBrowserRouter, Navigate, Outlet, useNavigate } from "react-router";
+import { useEffect } from "react";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { Dashboard } from "./components/Dashboard";
 import { Campaigns } from "./components/Campaigns";
@@ -11,10 +12,22 @@ import { LoginPage } from "./components/LoginPage";
 import { CompanySignUp } from "./components/CompanySignUp";
 import { CallMonitoring } from "./components/CallMonitoring";
 import { UserManagement } from "./components/UserManagement";
+import { AcceptInvite } from "./components/AcceptInvite";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 /** Root layout that wraps everything in AuthProvider */
 function RootLayout() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Supabase invite links redirect to site_url with hash fragments.
+    // Detect type=invite in the hash and redirect to /invite/accept.
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=invite")) {
+      navigate("/invite/accept" + hash, { replace: true });
+    }
+  }, [navigate]);
+
   return (
     <AuthProvider>
       <Outlet />
@@ -48,6 +61,7 @@ export const router = createBrowserRouter([
       /* Auth pages — full-viewport, no dashboard shell */
       { path: "/login", Component: LoginPage },
       { path: "/signup", Component: CompanySignUp },
+      { path: "/invite/accept", Component: AcceptInvite },
       { path: "/create-account", element: <Navigate to="/login" replace /> },
 
       /* Protected dashboard routes */
