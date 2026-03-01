@@ -41,14 +41,14 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard", exact: true },
-  { to: "/analytics", icon: BarChart3, label: "Analytics" },
-  { to: "/campaigns", icon: PhoneCall, label: "Campaigns" },
-  { to: "/callers", icon: UserCircle, label: "Caller Profiles" },
-  { to: "/scripts", icon: FileText, label: "Scripts" },
-  { to: "/employees", icon: Users, label: "Employees" },
-  { to: "/monitoring", icon: Activity, label: "Call Monitoring" },
-  { to: "/settings/users", icon: Settings, label: "Team", adminOnly: true },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", exact: true },
+  { to: "/dashboard/analytics", icon: BarChart3, label: "Analytics" },
+  { to: "/dashboard/campaigns", icon: PhoneCall, label: "Campaigns" },
+  { to: "/dashboard/callers", icon: UserCircle, label: "Caller Profiles" },
+  { to: "/dashboard/scripts", icon: FileText, label: "Scripts" },
+  { to: "/dashboard/employees", icon: Users, label: "Employees" },
+  { to: "/dashboard/monitoring", icon: Activity, label: "Call Monitoring" },
+  { to: "/dashboard/settings/users", icon: Settings, label: "Team", adminOnly: true },
 ];
 
 const labelMap: Record<string, string> = {
@@ -66,8 +66,11 @@ const labelMap: Record<string, string> = {
 function useBreadcrumbs(pathname: string) {
   const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({});
 
+  // Strip the /dashboard prefix for breadcrumb logic
+  const stripped = pathname.replace(/^\/dashboard\/?/, "/");
+
   useEffect(() => {
-    const parts = pathname.split("/").filter(Boolean);
+    const parts = stripped.split("/").filter(Boolean);
     // Detect /campaigns/:id pattern
     if (parts[0] === "campaigns" && parts[1] && !labelMap[parts[1]]) {
       const id = parts[1];
@@ -79,13 +82,13 @@ function useBreadcrumbs(pathname: string) {
         });
       }
     }
-  }, [pathname]);
+  }, [stripped]);
 
-  if (pathname === "/") return [{ label: "Dashboard" }];
+  if (stripped === "/") return [{ label: "Dashboard" }];
 
-  const parts = pathname.split("/").filter(Boolean);
+  const parts = stripped.split("/").filter(Boolean);
   return parts.map((p, i) => {
-    const href = "/" + parts.slice(0, i + 1).join("/");
+    const href = "/dashboard/" + parts.slice(0, i + 1).join("/");
     const label = resolvedNames[p] || labelMap[p] || p.charAt(0).toUpperCase() + p.slice(1);
     return { label, href };
   });

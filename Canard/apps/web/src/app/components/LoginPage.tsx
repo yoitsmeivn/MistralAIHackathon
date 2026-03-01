@@ -24,7 +24,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await signIn(email, password);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Sign in failed";
       setError(msg);

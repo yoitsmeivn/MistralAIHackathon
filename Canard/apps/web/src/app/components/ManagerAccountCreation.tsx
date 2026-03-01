@@ -50,7 +50,7 @@ export function ManagerAccountCreation() {
 
       // 2. Sign in to get session
       await signIn(email, password);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Registration failed";
       setError(msg);

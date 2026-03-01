@@ -54,7 +54,7 @@ export function AcceptInvite() {
         password,
       });
       if (updateError) throw updateError;
-      navigate("/");
+      navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to set password");
     } finally {

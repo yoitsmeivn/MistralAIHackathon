@@ -16,6 +16,7 @@ import { UserManagement } from "./components/UserManagement";
 import { AcceptInvite } from "./components/AcceptInvite";
 import { Analytics } from "./components/Analytics";
 import { EmployeeDetail } from "./components/EmployeeDetail";
+import { LandingPage } from "./components/LandingPage";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 /** Root layout that wraps everything in AuthProvider */
@@ -36,6 +37,25 @@ function RootLayout() {
       <Outlet />
     </AuthProvider>
   );
+}
+
+/** Shows landing page if not authenticated, redirects to /dashboard if logged in */
+function LandingOrRedirect() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-svh flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#252a39]" />
+      </div>
+    );
+  }
+
+  if (session) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <LandingPage />;
 }
 
 /** Redirects to /login if not authenticated */
@@ -61,6 +81,9 @@ export const router = createBrowserRouter([
   {
     Component: RootLayout,
     children: [
+      /* Public landing page — redirects to /dashboard if authenticated */
+      { path: "/", Component: LandingOrRedirect },
+
       /* Auth pages — full-viewport, no dashboard shell */
       { path: "/login", Component: LoginPage },
       { path: "/signup", Component: CompanySignUp },
@@ -72,7 +95,7 @@ export const router = createBrowserRouter([
         Component: ProtectedRoute,
         children: [
           {
-            path: "/",
+            path: "/dashboard",
             Component: DashboardLayout,
             children: [
               { index: true, Component: Dashboard },

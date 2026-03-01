@@ -22,7 +22,7 @@ export function NotFound() {
           The page you're looking for doesn't exist.
         </p>
         <Link
-          to="/"
+          to="/dashboard"
           className="inline-block px-5 py-2 rounded-lg text-sm transition-opacity hover:opacity-90"
           style={{
             backgroundColor: "#252a39",
