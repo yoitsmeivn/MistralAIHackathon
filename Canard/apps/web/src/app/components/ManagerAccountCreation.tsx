@@ -1,15 +1,63 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Eye, EyeOff, UserPlus, ArrowLeft, ShieldCheck } from "lucide-react";
 import { motion } from "motion/react";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Button } from "./ui/button";
+import { useAuth } from "../contexts/AuthContext";
 import logoImg from "../../../CanardSecurityTransparent.png";
 
 export function ManagerAccountCreation() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [companyCode, setCompanyCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // 1. Register manager via backend
+      const res = await fetch("/api/auth/register-manager", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_code: companyCode,
+          email,
+          password,
+          full_name: fullName,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Registration failed (${res.status})`);
+      }
+
+      // 2. Sign in to get session
+      await signIn(email, password);
+      navigate("/", { replace: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Registration failed";
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="min-h-svh flex items-center justify-center bg-gradient-to-br from-[#f4f4f4] via-[#eaeaea] to-[#e0dfd8] px-4 py-10">
@@ -62,8 +110,14 @@ export function ManagerAccountCreation() {
             </p>
           </div>
 
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
           {/* Form */}
-          <form onSubmit={(e) => e.preventDefault()} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Role badge */}
             <div className="flex items-center gap-2 rounded-lg border border-[#fdfbe1] bg-[#fdfbe1]/30 px-3 py-2">
               <ShieldCheck className="size-4 text-[#252a39]" />
@@ -75,6 +129,8 @@ export function ManagerAccountCreation() {
               <Input
                 id="manager-name"
                 placeholder="Jane Doe"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
                 required
               />
             </div>
@@ -85,6 +141,8 @@ export function ManagerAccountCreation() {
                 id="manager-email"
                 type="email"
                 placeholder="jane@acme.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
@@ -93,11 +151,13 @@ export function ManagerAccountCreation() {
               <Label htmlFor="company-code">Company Code *</Label>
               <Input
                 id="company-code"
-                placeholder="e.g. ACME-2026"
+                placeholder="e.g. acme-corporation"
+                value={companyCode}
+                onChange={(e) => setCompanyCode(e.target.value)}
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Enter the unique code provided by your organization to link your account.
+                Enter your organization's slug (e.g. "acme-corporation") to link your account.
               </p>
             </div>
 
@@ -109,7 +169,10 @@ export function ManagerAccountCreation() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
+                  minLength={6}
                 />
                 <button
                   type="button"
@@ -129,7 +192,10 @@ export function ManagerAccountCreation() {
                   type={showConfirm ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  minLength={6}
                 />
                 <button
                   type="button"
@@ -143,10 +209,11 @@ export function ManagerAccountCreation() {
 
             <Button
               type="submit"
+              disabled={submitting}
               className="w-full bg-[#252a39] text-white hover:bg-[#252a39]/90 h-10"
             >
               <UserPlus className="size-4 mr-2" />
-              Request Account
+              {submitting ? "Creating account..." : "Request Account"}
             </Button>
           </form>
 

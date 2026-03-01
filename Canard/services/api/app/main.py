@@ -14,6 +14,7 @@ from app.routes.calls import router as calls_router
 from app.routes.campaigns import router as campaigns_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.employees import router as employees_router
+from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
 from app.routes.scripts import router as scripts_router
 from app.twilio_voice.routes import router as twilio_router
@@ -40,6 +41,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(calls_router)
 app.include_router(campaigns_router)
 app.include_router(employees_router)
