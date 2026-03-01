@@ -4,8 +4,9 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
+from app.auth.middleware import OptionalUser
 from app.db import queries
 from app.models.api import (
     CallsOverTimeResponse,
@@ -21,11 +22,16 @@ DEPT_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899",
 
 @router.get("/stats", response_model=list[DashboardStatResponse])
 async def api_dashboard_stats(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> list[DashboardStatResponse]:
-    campaigns = queries.list_campaigns(org_id)
-    employees = queries.list_employees(org_id, active_only=False)
-    all_calls = queries.list_calls(org_id=org_id, limit=10000)
+    resolved_org_id = user["org_id"] if user else org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    campaigns = queries.list_campaigns(resolved_org_id)
+    employees = queries.list_employees(resolved_org_id, active_only=False)
+    all_calls = queries.list_calls(org_id=resolved_org_id, limit=10000)
 
     active_campaigns = sum(1 for c in campaigns if c.get("status") in ("in_progress", "active"))
     total_calls = len(all_calls)
@@ -47,9 +53,14 @@ async def api_dashboard_stats(
 
 @router.get("/risk-distribution", response_model=list[RiskDistributionResponse])
 async def api_risk_distribution(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> list[RiskDistributionResponse]:
-    employees = queries.list_employees(org_id, active_only=False)
+    resolved_org_id = user["org_id"] if user else org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    employees = queries.list_employees(resolved_org_id, active_only=False)
     counts: dict[str, int] = defaultdict(int)
     for emp in employees:
         level = emp.get("risk_level", "unknown") or "unknown"
@@ -63,10 +74,15 @@ async def api_risk_distribution(
 
 @router.get("/risk-by-department", response_model=list[RiskDistributionResponse])
 async def api_risk_by_department(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> list[RiskDistributionResponse]:
-    employees = queries.list_employees(org_id, active_only=False)
-    all_calls = queries.list_calls(org_id=org_id, limit=10000)
+    resolved_org_id = user["org_id"] if user else org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    employees = queries.list_employees(resolved_org_id, active_only=False)
+    all_calls = queries.list_calls(org_id=resolved_org_id, limit=10000)
 
     emp_dept: dict[str, str] = {e["id"]: e.get("department", "Other") for e in employees}
 
@@ -89,10 +105,15 @@ async def api_risk_by_department(
 
 @router.get("/calls-over-time", response_model=list[CallsOverTimeResponse])
 async def api_calls_over_time(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
     days: int = Query(7, le=30),
 ) -> list[CallsOverTimeResponse]:
-    all_calls = queries.list_calls(org_id=org_id, limit=10000)
+    resolved_org_id = user["org_id"] if user else org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    all_calls = queries.list_calls(org_id=resolved_org_id, limit=10000)
 
     today = datetime.now(timezone.utc).date()
     date_range = [(today - timedelta(days=i)) for i in range(days - 1, -1, -1)]

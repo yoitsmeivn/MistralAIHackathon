@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # Supabase
     supabase_url: str = ""
     supabase_service_role_key: str = ""
+    supabase_anon_public_key: str = ""
+
+    # App
+    app_url: str = "http://localhost:3000"
 
     # Safety
     store_raw_transcripts: bool = False
