@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 try:
     import weave as _weave
+
     _HAS_WEAVE = True
 except ImportError:
     _HAS_WEAVE = False
@@ -27,6 +28,7 @@ from app.routes.employees import router as employees_router
 from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
 from app.routes.scripts import router as scripts_router
+from app.streaming.routes import router as monitor_router
 from app.twilio_voice.routes import router as twilio_router
 
 
@@ -68,8 +70,7 @@ app.include_router(scripts_router)
 app.include_router(dashboard_router)
 app.include_router(analytics_router)
 app.include_router(twilio_router)
-
-
+app.include_router(monitor_router)
 
 
 if __name__ == "__main__":

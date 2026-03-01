@@ -33,6 +33,7 @@ from elevenlabs.client import AsyncElevenLabs
 from elevenlabs.types import VoiceSettings
 
 from app.config import settings
+from app.streaming.event_bus import CallEvent, event_bus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -41,18 +42,12 @@ LOGGER = logging.getLogger(__name__)
 # Docs: output_format enum in /v1/text-to-speech/{voice_id}
 _TWILIO_OUTPUT_FORMAT = "ulaw_8000"
 
-# Voice settings tuned for phone calls:
-# stability=0.75  → consistent delivery, not erratic
-# similarity_boost=0.85 → stays close to the chosen voice
-# style=0.0       → no style exaggeration (saves latency)
-# use_speaker_boost=False → adds latency, not needed for phone
-# speed=1.0       → natural pace
 _PHONE_VOICE_SETTINGS = VoiceSettings(
-    stability=0.75,
-    similarity_boost=0.85,
+    stability=0.45,
+    similarity_boost=0.75,
     style=0.0,
     use_speaker_boost=False,
-    speed=1.0,
+    speed=1.05,
 )
 
 
@@ -68,6 +63,7 @@ _STAGE_DIRECTION_PATTERNS = [
     re.compile(r"\*[^*]{1,40}\*"),
     re.compile(r"(?<!\w)\.(?:period|dot)\b", re.IGNORECASE),
     re.compile(r"(?:^|\s)(?:lol|haha|hehe|rofl|lmao)(?:\s|$)", re.IGNORECASE),
+    re.compile(r"\[CALL_COMPLETE\]"),
 ]
 
 _MARKDOWN_PATTERNS = [
@@ -111,6 +107,7 @@ async def text_to_speech(
     text: str,
     voice_id: str | None = None,
     output_format: str = _TWILIO_OUTPUT_FORMAT,
+    call_id: str | None = None,
 ) -> bytes:
     """
     Convert text to speech audio bytes using the ElevenLabs SDK.
@@ -125,18 +122,33 @@ async def text_to_speech(
         text: The text to synthesize.
         voice_id: Override the configured voice. Defaults to settings.elevenlabs_voice_id.
         output_format: ElevenLabs output format string. Default: ulaw_8000.
-
+        call_id: Optional call ID for event emission.
     Returns:
         Raw audio bytes.
     """
     selected_voice_id = voice_id or settings.elevenlabs_voice_id
 
-    LOGGER.debug(
-        "ElevenLabs TTS: voice=%s format=%s text_len=%d",
+    LOGGER.info(
+        "ElevenLabs TTS: voice=%s model=%s format=%s text_len=%d",
         selected_voice_id,
+        "eleven_flash_v2_5",
         output_format,
         len(text),
     )
+
+    if call_id is not None:
+        await event_bus.emit(
+            CallEvent(
+                call_id,
+                "tts_voice_used",
+                {
+                    "voice_id": selected_voice_id,
+                    "model_id": "eleven_flash_v2_5",
+                    "output_format": output_format,
+                    "text_len": len(text),
+                },
+            )
+        )
 
     client = _client()
 
@@ -144,7 +156,7 @@ async def text_to_speech(
     async for chunk in client.text_to_speech.convert(
         voice_id=selected_voice_id,
         text=text,
-        model_id="eleven_multilingual_v2",
+        model_id="eleven_flash_v2_5",
         output_format=output_format,
         voice_settings=_PHONE_VOICE_SETTINGS,
         optimize_streaming_latency=3,
@@ -156,6 +168,56 @@ async def text_to_speech(
 
     LOGGER.debug("ElevenLabs TTS: got %d bytes", len(audio_bytes))
     return audio_bytes
+
+
+async def text_to_speech_streaming(
+    text: str,
+    voice_id: str | None = None,
+    output_format: str = _TWILIO_OUTPUT_FORMAT,
+    call_id: str | None = None,
+) -> AsyncIterator[bytes]:
+    """
+    Stream TTS audio chunks as they arrive from ElevenLabs.
+
+    Same as text_to_speech() but yields each chunk instead of
+    collecting them into a single bytes object.
+    """
+    selected_voice_id = voice_id or settings.elevenlabs_voice_id
+
+    LOGGER.info(
+        "ElevenLabs TTS streaming: voice=%s model=%s format=%s text_len=%d",
+        selected_voice_id,
+        "eleven_flash_v2_5",
+        output_format,
+        len(text),
+    )
+
+    if call_id is not None:
+        await event_bus.emit(
+            CallEvent(
+                call_id,
+                "tts_voice_used",
+                {
+                    "voice_id": selected_voice_id,
+                    "model_id": "eleven_flash_v2_5",
+                    "output_format": output_format,
+                    "text_len": len(text),
+                },
+            )
+        )
+
+    client = _client()
+
+    async for chunk in client.text_to_speech.convert(
+        voice_id=selected_voice_id,
+        text=text,
+        model_id="eleven_flash_v2_5",
+        output_format=output_format,
+        voice_settings=_PHONE_VOICE_SETTINGS,
+        optimize_streaming_latency=3,
+    ):
+        if isinstance(chunk, bytes):
+            yield chunk
 
 
 async def speech_to_text(

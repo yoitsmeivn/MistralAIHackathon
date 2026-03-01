@@ -7,8 +7,11 @@ import json
 import logging
 import random
 import time
+import unicodedata
 from datetime import datetime, timezone
+from typing import Any, cast
 
+import httpx
 from fastapi import APIRouter, Form, Response, WebSocket, WebSocketDisconnect
 
 from app.agent import (
@@ -16,23 +19,69 @@ from app.agent import (
     end_session,
     redact_pii,
     run_turn,
+    run_turn_streaming,
     start_session,
 )
-from app.agent.prompts import STREAM_GREETING
+from app.agent.memory import session_store
+from app.agent.prompts import STREAM_GREETING, build_greeting
 from app.config import settings as cfg
+from app.db.client import get_supabase
 from app.integrations.elevenlabs import (
     realtime_stt_session,
     sanitize_for_tts,
     speech_to_text_from_url,
     text_to_speech,
+    text_to_speech_streaming,
 )
+from app.streaming.event_bus import CallEvent, event_bus
+from app.validation.scorer import EmployeeProfile, score_disclosure
 from app.twilio_voice import twiml
 from app.twilio_voice.session import (
+    AgentState,
     TurnRole,
     create_session,
     get_session,
     remove_session,
 )
+
+# ── Barge-in constants ──
+_BARGE_IN_THRESHOLD = 1000  # RMS energy — raised to prevent false triggers from ambient noise, hand movements, breathing
+_BARGE_IN_FRAMES = (
+    5  # 5 consecutive loud frames (~100ms) required — filters transient sounds
+)
+
+_BACKCHANNEL_WORDS = frozenset({"uh huh", "mm", "hmm", "mhm", "okay", "uh", "ah"})
+
+
+def _is_latin_text(text: str) -> bool:
+    for char in text:
+        if not unicodedata.category(char).startswith("L"):
+            continue
+        if ord(char) < 0x0250:
+            continue
+        if "LATIN" in unicodedata.name(char, ""):
+            continue
+        return False
+    return True
+
+
+def _compute_mulaw_energy(payload: bytes) -> float:
+    """Compute RMS energy of µ-law encoded audio. Works on Python 3.13+ (no audioop)."""
+    if not payload:
+        return 0.0
+    total = 0.0
+    for byte_val in payload:
+        # µ-law to linear approximation
+        byte_val = ~byte_val & 0xFF
+        sign = -1 if (byte_val & 0x80) else 1
+        exponent = (byte_val >> 4) & 0x07
+        mantissa = byte_val & 0x0F
+        magnitude = ((mantissa << 1) | 0x21) << (exponent + 2)
+        magnitude -= 0x21
+        sample = sign * magnitude
+        total += sample * sample
+    return (total / len(payload)) ** 0.5
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +97,7 @@ async def generate_agent_reply(call_id: str, transcript: str) -> str:
         return "I'm sorry, could you repeat that? I had trouble hearing you."
 
 
-async def _init_agent_session(call_id: str) -> None:
+async def _init_agent_session(call_id: str) -> tuple[dict | None, dict | None]:
     """Fetch script/caller from DB and initialize the Mistral agent session.
 
     Follows the same safe-wrapper pattern as _lookup_call_safe / _update_call_safe.
@@ -57,6 +106,9 @@ async def _init_agent_session(call_id: str) -> None:
     """
     script: dict | None = None
     caller: dict | None = None
+    employee: dict | None = None
+    org: dict | None = None
+    boss: dict | None = None
     script_id = ""
 
     try:
@@ -71,6 +123,16 @@ async def _init_agent_session(call_id: str) -> None:
             cid = call_record.get("caller_id")
             if cid:
                 caller = queries.get_caller(cid)
+            eid = call_record.get("employee_id")
+            if eid:
+                employee = queries.get_employee(eid)
+            if employee:
+                org_id = employee.get("org_id")
+                if org_id:
+                    org = queries.get_organization(org_id)
+                boss_id = employee.get("boss_id")
+                if boss_id:
+                    boss = queries.get_employee(boss_id)
     except Exception:
         LOGGER.warning(
             "DB lookup failed during agent init for call_id=%s", call_id, exc_info=True
@@ -124,7 +186,9 @@ async def _init_agent_session(call_id: str) -> None:
         }
 
     system_prompt = (
-        build_system_prompt(script, caller=caller)
+        build_system_prompt(
+            script, caller=caller, employee=employee, org=org, boss=boss
+        )
         if script
         else build_system_prompt(scenario_name="Security Training")
     )
@@ -132,6 +196,7 @@ async def _init_agent_session(call_id: str) -> None:
     LOGGER.info(
         "Agent session initialized: call_id=%s script_id=%s", call_id, script_id
     )
+    return caller, employee
 
 
 # ---------------------------------------------------------------------------
@@ -211,49 +276,46 @@ async def twilio_status(
                 except ValueError:
                     pass
 
-        # ── Transcribe recording with ElevenLabs batch STT ──
-        recording_transcript: str | None = None
-        if RecordingUrl:
-            try:
-                recording_transcript = await speech_to_text_from_url(RecordingUrl)
-                LOGGER.info(
-                    "ElevenLabs STT transcribed recording for call %s (%d chars)",
-                    call_id,
-                    len(recording_transcript),
-                )
-                if session:
-                    session.recording_transcript = recording_transcript
-            except Exception:
-                LOGGER.warning(
-                    "ElevenLabs STT failed for RecordingUrl=%s, skipping",
-                    RecordingUrl,
-                    exc_info=True,
-                )
-                if session:
-                    session.add_error(
-                        "stt",
-                        "recording_transcription_failed",
-                        f"RecordingUrl: {RecordingUrl}",
-                    )
-
         # ── Produce final summary ──
         summary = session.to_summary_dict() if session else {}
         LOGGER.info("Call completed — summary: %s", json.dumps(summary, default=str))
 
-        # Persist call completion data
-        update_data: dict = {
+        # TODO(db): Persist call completion data:
+        #   update_call(call_id, {status, ended_at, recording_url, duration})
+        #   For each turn in session.turns:
+        #       create_turn({call_id, role, text_redacted, turn_index, ...})
+        update_data: dict[str, object] = {
             "status": "completed",
             "ended_at": datetime.now(timezone.utc).isoformat(),
             "recording_url": RecordingUrl or None,
         }
+
+        # Duration (if provided by Twilio)
+        if CallDuration:
+            try:
+                update_data["duration_seconds"] = int(CallDuration)
+            except ValueError:
+                pass
+
+        # Transcript preference order:
+        # 1) Twilio-provided recording transcript (if present)
+        # 2) Session recording transcript (if present)
+        # 3) Reconstructed from session turns
         if recording_transcript:
             update_data["transcript"] = recording_transcript
+        elif session and getattr(session, "recording_transcript", None):
+            update_data["transcript"] = session.recording_transcript
+        elif session and getattr(session, "turns", None):
+            transcript_lines: list[str] = []
+            for t in session.turns:
+                label = "Agent" if getattr(t.role, "value", t.role) == "agent" else "User"
+                transcript_lines.append(f"{label}: {t.text}")
+            update_data["transcript"] = "\n".join(transcript_lines)
+
         _update_call_safe(call_id, update_data)
 
         # Fire post-call evaluation in the background
-        asyncio.create_task(
-            _run_evaluation_safe(call_id, recording_transcript)
-        )
+        asyncio.create_task(_run_evaluation_safe(call_id, update_data.get("transcript", "")))
 
         # Clean up in-memory session
         remove_session(call_id)
@@ -276,9 +338,6 @@ async def twilio_recording(
 
     Reliability complement to RecordingUrl in /status.
     Twilio posts here when a recording completes.
-
-    TODO(db): Persist recording_url, recording_sid, recording_duration
-              to the calls table.
     """
     LOGGER.info(
         "Twilio /recording: CallSid=%s RecSid=%s Status=%s Dur=%s URL=%s",
@@ -301,7 +360,75 @@ async def twilio_recording(
                 except ValueError:
                     pass
 
-        # TODO(db): update_call(call["id"], {recording_url, recording_sid, ...})
+        # ── Transcribe recording with ElevenLabs batch STT ──
+        if RecordingStatus == "completed" and RecordingUrl:
+            download_url = RecordingUrl.rstrip("/") + ".wav"
+            try:
+                # Brief delay to ensure recording is propagated
+                await asyncio.sleep(2)
+                recording_transcript = await speech_to_text_from_url(download_url)
+                LOGGER.info(
+                    "ElevenLabs STT transcribed recording for call %s (%d chars)",
+                    call["id"],
+                    len(recording_transcript),
+                )
+                if session:
+                    session.recording_transcript = recording_transcript
+            except Exception:
+                LOGGER.warning(
+                    "ElevenLabs STT failed for RecordingUrl=%s, skipping",
+                    RecordingUrl,
+                    exc_info=True,
+                )
+                if session:
+                    session.add_error(
+                        "stt",
+                        "recording_transcription_failed",
+                        f"RecordingUrl: {RecordingUrl}",
+                    )
+
+            try:
+                if not RecordingSid:
+                    raise ValueError("RecordingSid missing from Twilio callback")
+
+                async with httpx.AsyncClient(
+                    auth=(cfg.twilio_account_sid, cfg.twilio_auth_token),
+                    timeout=30.0,
+                ) as client:
+                    recording_response = await client.get(download_url)
+                    recording_response.raise_for_status()
+
+                storage_path = f"{call['id']}/{RecordingSid}.wav"
+                upload_options: dict[str, str] = {
+                    "content-type": "audio/wav",
+                    "upsert": "true",
+                }
+                get_supabase().storage.from_("recordings").upload(
+                    storage_path,
+                    recording_response.content,
+                    cast(Any, upload_options),
+                )
+
+                supabase_url = f"{cfg.supabase_url.rstrip('/')}/storage/v1/object/public/recordings/{storage_path}"
+                call_update: dict[str, object] = {
+                    "recording_url": supabase_url,
+                }
+                if RecordingDuration:
+                    try:
+                        call_update["duration_seconds"] = int(RecordingDuration)
+                    except ValueError:
+                        LOGGER.warning(
+                            "Invalid RecordingDuration in /recording callback: %s",
+                            RecordingDuration,
+                        )
+                _update_call_safe(call["id"], call_update)
+            except Exception:
+                LOGGER.warning(
+                    "Recording persistence to Supabase failed for call_id=%s RecordingSid=%s",
+                    call["id"],
+                    RecordingSid,
+                    exc_info=True,
+                )
 
     return Response(content="", status_code=200)
 
@@ -396,24 +523,71 @@ async def twilio_stream(websocket: WebSocket) -> None:
     # ------------------------------------------------------------------
     # Phase 2.5 - Initialize Mistral agent session
     # ------------------------------------------------------------------
+    _caller: dict | None = None
+    _employee: dict | None = None
     try:
-        await _init_agent_session(call_id)
+        _caller, _employee = await _init_agent_session(call_id)
     except Exception:
+        _caller = None
+        _employee = None
         LOGGER.warning(
             "Agent session init failed for call_id=%s, agent replies will use fallback",
             call_id,
             exc_info=True,
         )
 
+    if _caller:
+        vp = _caller.get("voice_profile") or {}
+        if isinstance(vp, dict) and vp.get("voice_id"):
+            session.caller_voice_id = vp["voice_id"]
+            LOGGER.info("Persona voice_id set: %s", session.caller_voice_id)
+            await event_bus.emit(
+                CallEvent(
+                    call_id,
+                    "persona_used",
+                    {
+                        "persona_name": _caller.get("persona_name", ""),
+                        "voice_id": session.caller_voice_id,
+                    },
+                )
+            )
+
+    def _voice_id() -> str | None:
+        return session.caller_voice_id
+
+    try:
+        from app.db import queries as _q
+
+        call_record = _q.get_call(call_id)
+        if call_record:
+            employee = _q.get_employee(call_record.get("employee_id", ""))
+            boss_record = None
+            if employee and employee.get("boss_id"):
+                boss_record = _q.get_employee(employee["boss_id"])
+            session.employee_profile = EmployeeProfile.from_db(employee, boss_record)
+    except Exception:
+        LOGGER.warning("Failed to load employee profile for validation", exc_info=True)
+
     # ------------------------------------------------------------------
     # Phase 3 — Send ElevenLabs TTS greeting (agent speaks first)
     # ------------------------------------------------------------------
     try:
         t0 = time.monotonic()
-        greeting_audio = await text_to_speech(sanitize_for_tts(STREAM_GREETING))
+        greeting_text = build_greeting(_caller, _employee) or STREAM_GREETING
+        greeting_audio = await text_to_speech(
+            sanitize_for_tts(greeting_text), voice_id=_voice_id(), call_id=call_id
+        )
         tts_ms = (time.monotonic() - t0) * 1000
 
         if greeting_audio and stream_sid:
+            session.state_transition(AgentState.SPEAKING)
+            await event_bus.emit(
+                CallEvent(
+                    call_id,
+                    "state_transition",
+                    {"new_state": session.agent_state.value},
+                )
+            )
             await websocket.send_text(
                 json.dumps(
                     {
@@ -434,13 +608,17 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     }
                 )
             )
+            session.audio_send_time = time.monotonic()
+            session.audio_send_bytes = len(greeting_audio)
+            session.barge_in_cooldown_until = time.monotonic() + 0.5
             session.greeting_sent_at = datetime.now(timezone.utc).isoformat()
             session.add_turn(
                 TurnRole.AGENT,
-                STREAM_GREETING,
+                greeting_text,
                 tts_duration_ms=tts_ms,
                 audio_bytes_sent=len(greeting_audio),
             )
+            session_store.add_message(call_id, "assistant", greeting_text)
             session.total_tts_ms += tts_ms
             session.audio_bytes_sent_total += len(greeting_audio)
             LOGGER.info(
@@ -454,9 +632,14 @@ async def twilio_stream(websocket: WebSocket) -> None:
     # Phase 4 — Concurrent receive + agent loop
     # ------------------------------------------------------------------
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+    last_speech_time = [time.monotonic()]
+    silence_state = {"nudge_sent": False}
+    last_nudge_time = [0.0]
+    generation_counter = [0]
 
     async def _receive_twilio() -> None:
         """Forward Twilio ``media`` chunks into the STT audio queue."""
+        consecutive_loud = 0
         try:
             while True:
                 raw = await websocket.receive_text()
@@ -470,7 +653,70 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 if event == "media":
                     payload = msg.get("media", {}).get("payload", "")
                     if payload:
-                        await audio_queue.put(base64.b64decode(payload))
+                        decoded = base64.b64decode(payload)
+
+                        # ── Barge-in detection ──
+                        if (
+                            session.agent_is_speaking
+                            and time.monotonic() > session.barge_in_cooldown_until
+                        ):
+                            energy = _compute_mulaw_energy(decoded)
+                            if energy > _BARGE_IN_THRESHOLD:
+                                consecutive_loud += 1
+                            else:
+                                consecutive_loud = 0
+                            if consecutive_loud >= _BARGE_IN_FRAMES:
+                                # User is speaking over agent — clear queued audio
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {"event": "clear", "streamSid": stream_sid}
+                                    )
+                                )
+                                await event_bus.emit(
+                                    CallEvent(
+                                        call_id,
+                                        "clear_sent",
+                                        {"stream_sid": stream_sid},
+                                    )
+                                )
+                                session.state_transition(AgentState.LISTENING)
+                                await event_bus.emit(
+                                    CallEvent(
+                                        call_id,
+                                        "state_transition",
+                                        {"new_state": session.agent_state.value},
+                                    )
+                                )
+                                generation_counter[0] += 1
+                                consecutive_loud = 0
+                                last_speech_time[0] = time.monotonic()
+                                silence_state["nudge_sent"] = False
+                                LOGGER.info(
+                                    "Barge-in detected: call_id=%s, clearing audio",
+                                    call_id,
+                                )
+                                await event_bus.emit(
+                                    CallEvent(
+                                        call_id,
+                                        "barge_in",
+                                        {"energy": round(energy, 1)},
+                                    )
+                                )
+                        else:
+                            consecutive_loud = 0
+
+                        if session.agent_state == AgentState.LISTENING:
+                            await audio_queue.put(decoded)
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "audio",
+                                {
+                                    "payload": payload,
+                                    "format": "ulaw_8000",
+                                },
+                            )
+                        )
                         session.audio_chunks_received += 1
 
                 elif event == "stop":
@@ -482,7 +728,28 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 elif event == "mark":
                     mark_name = msg.get("mark", {}).get("name", "")
                     session.add_mark(mark_name)
+                    last_speech_time[0] = time.monotonic()
                     LOGGER.debug("Twilio mark received: %s", mark_name)
+
+                    async def _echo_guard(mn: str = mark_name) -> None:
+                        await asyncio.sleep(0.4)
+                        session.state_transition(AgentState.LISTENING)
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "state_transition",
+                                {"new_state": session.agent_state.value},
+                            )
+                        )
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "stt_ungated",
+                                {"reason": "echo_guard_expired", "mark": mn},
+                            )
+                        )
+
+                    asyncio.create_task(_echo_guard())
 
                 elif event == "dtmf":
                     digit = msg.get("dtmf", {}).get("digit", "")
@@ -493,63 +760,81 @@ async def twilio_stream(websocket: WebSocket) -> None:
             session.disconnect_reason = "websocket_disconnect"
             await audio_queue.put(None)
 
-    async def _agent_loop() -> None:
-        """Core loop: ElevenLabs STT → Agent reply → ElevenLabs TTS → Twilio."""
-        try:
-            async for transcript in realtime_stt_session(audio_queue):
-                if not transcript.strip():
-                    continue
+    async def _silence_monitor() -> None:
+        """Nudge after 8s silence, goodbye after 20s."""
+        while True:
+            await asyncio.sleep(1.0)
 
+            if session.disconnect_reason:
+                break
+
+            if session.call_should_end:
+                if session.agent_is_speaking and session.audio_send_time > 0:
+                    expected_duration = session.audio_send_bytes / 8000.0
+                    if (
+                        time.monotonic() - session.audio_send_time
+                        < expected_duration + 1.0
+                    ):
+                        continue
                 LOGGER.info(
-                    "[call=%s turn=%d] User: %r",
+                    "Graceful call end: call_id=%s reason=%s",
                     call_id,
-                    session.next_turn_index,
-                    transcript,
+                    session.end_reason,
                 )
+                session.disconnect_reason = session.end_reason or "call_complete"
+                await audio_queue.put(None)
+                try:
+                    await websocket.close()
+                except Exception:
+                    LOGGER.debug("WebSocket close during graceful end failed")
+                break
 
-                # ── Persist user turn ──
-                redaction = redact_pii(transcript)
-                session.add_turn(
-                    TurnRole.USER,
-                    transcript
-                    if cfg.store_raw_transcripts
-                    else redaction.redacted_text,
-                    redacted_text=redaction.redacted_text,
-                )
-                # TODO(db): create_turn({call_id, role="user", text_redacted, ...})
+            if session.agent_is_speaking and session.audio_send_time > 0:
+                expected_duration = session.audio_send_bytes / 8000.0
+                if time.monotonic() - session.audio_send_time > expected_duration + 3.0:
+                    session.state_transition(AgentState.LISTENING)
+                    await event_bus.emit(
+                        CallEvent(
+                            call_id,
+                            "state_transition",
+                            {"new_state": session.agent_state.value},
+                        )
+                    )
+                    LOGGER.warning(
+                        "Mark timeout: force-clearing agent_is_speaking for call_id=%s",
+                        call_id,
+                    )
 
-                # ── Agent reply (Mistral LLM agent) ──
-                t0 = time.monotonic()
-                agent_text = await generate_agent_reply(call_id, transcript)
-                agent_ms = (time.monotonic() - t0) * 1000
-                session.total_agent_ms += agent_ms
+            if session.agent_state != AgentState.LISTENING:
+                last_speech_time[0] = (
+                    time.monotonic()
+                )  # reset timer while not listening
+                continue
 
-                LOGGER.info(
-                    "[call=%s turn=%d] Agent: %r (%.0fms)",
-                    call_id,
-                    session.next_turn_index,
-                    agent_text,
-                    agent_ms,
-                )
+            elapsed = time.monotonic() - last_speech_time[0]
 
-                # ── ElevenLabs TTS → ulaw_8000 bytes ──
-                t0 = time.monotonic()
-                audio_bytes = await text_to_speech(sanitize_for_tts(agent_text))
-                tts_ms = (time.monotonic() - t0) * 1000
-                session.total_tts_ms += tts_ms
-
-                # Record agent turn
-                session.add_turn(
-                    TurnRole.AGENT,
-                    agent_text,
-                    tts_duration_ms=tts_ms,
-                    audio_bytes_sent=len(audio_bytes) if audio_bytes else 0,
-                )
-                # TODO(db): create_turn({call_id, role="agent", text, ...})
-
-                # ── Send audio back to Twilio ──
-                if stream_sid and audio_bytes:
-                    try:
+            if elapsed >= 20.0:
+                goodbye_phrases = [
+                    "Well, seems like you're busy. I'll try again later!",
+                    "Hello? Okay, I'll let you go. Have a good one!",
+                    "Alright, I think we got cut off. Take care!",
+                ]
+                goodbye_text = random.choice(goodbye_phrases)
+                try:
+                    goodbye_audio = await text_to_speech(
+                        sanitize_for_tts(goodbye_text),
+                        voice_id=_voice_id(),
+                        call_id=call_id,
+                    )
+                    if stream_sid and goodbye_audio:
+                        session.state_transition(AgentState.SPEAKING)
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "state_transition",
+                                {"new_state": session.agent_state.value},
+                            )
+                        )
                         await websocket.send_text(
                             json.dumps(
                                 {
@@ -557,12 +842,460 @@ async def twilio_stream(websocket: WebSocket) -> None:
                                     "streamSid": stream_sid,
                                     "media": {
                                         "payload": base64.b64encode(
-                                            audio_bytes
-                                        ).decode(),
+                                            goodbye_audio
+                                        ).decode()
                                     },
                                 }
                             )
                         )
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "event": "mark",
+                                    "streamSid": stream_sid,
+                                    "mark": {"name": "silence_goodbye"},
+                                }
+                            )
+                        )
+                        session.barge_in_cooldown_until = time.monotonic() + 0.5
+                    session.add_turn(TurnRole.AGENT, goodbye_text)
+                    await event_bus.emit(
+                        CallEvent(
+                            call_id,
+                            "silence_goodbye",
+                            {"elapsed_s": round(elapsed, 1)},
+                        )
+                    )
+                except Exception:
+                    LOGGER.warning("Failed to send goodbye for call_id=%s", call_id)
+
+                session.disconnect_reason = "silence_timeout"
+                await audio_queue.put(None)
+                try:
+                    await websocket.close()
+                except Exception:
+                    LOGGER.debug("WebSocket close during silence timeout failed")
+                break
+
+            elif (
+                elapsed >= 8.0
+                and not silence_state["nudge_sent"]
+                and (time.monotonic() - last_nudge_time[0]) >= 15.0
+            ):
+                nudge_phrases = [
+                    "Hello? You still there?",
+                    "Hey, you there?",
+                    "Sorry, did I lose you?",
+                ]
+                nudge_text = random.choice(nudge_phrases)
+                try:
+                    nudge_audio = await text_to_speech(
+                        sanitize_for_tts(nudge_text),
+                        voice_id=_voice_id(),
+                        call_id=call_id,
+                    )
+                    if stream_sid and nudge_audio:
+                        session.state_transition(AgentState.SPEAKING)
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "state_transition",
+                                {"new_state": session.agent_state.value},
+                            )
+                        )
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "event": "media",
+                                    "streamSid": stream_sid,
+                                    "media": {
+                                        "payload": base64.b64encode(
+                                            nudge_audio
+                                        ).decode()
+                                    },
+                                }
+                            )
+                        )
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "event": "mark",
+                                    "streamSid": stream_sid,
+                                    "mark": {"name": "silence_nudge"},
+                                }
+                            )
+                        )
+                        session.barge_in_cooldown_until = time.monotonic() + 0.5
+                    session.add_turn(TurnRole.AGENT, nudge_text)
+                    await event_bus.emit(
+                        CallEvent(
+                            call_id,
+                            "silence_nudge",
+                            {"elapsed_s": round(elapsed, 1)},
+                        )
+                    )
+                except Exception:
+                    LOGGER.warning("Failed to send nudge for call_id=%s", call_id)
+                silence_state["nudge_sent"] = True
+                last_nudge_time[0] = time.monotonic()
+
+    async def _agent_loop() -> None:
+        """Core loop: ElevenLabs STT → Agent reply → ElevenLabs TTS → Twilio.
+
+        Uses debouncing: accumulates STT transcripts and waits for 0.3s
+        of silence before processing, so the user can finish their thought.
+        """
+        DEBOUNCE_SECONDS = 0.3
+        accumulated_text: list[str] = []
+        debounce_task: asyncio.Task | None = None
+        processing_lock = asyncio.Lock()
+
+        async def _process_accumulated() -> None:
+            """Process all accumulated transcripts as one user turn."""
+            nonlocal accumulated_text
+            async with processing_lock:
+                generation_counter[0] += 1
+                my_generation_id = generation_counter[0]
+                session.state_transition(AgentState.PROCESSING)
+                await event_bus.emit(
+                    CallEvent(
+                        call_id,
+                        "state_transition",
+                        {"new_state": session.agent_state.value},
+                    )
+                )
+                await event_bus.emit(
+                    CallEvent(call_id, "stt_gated", {"reason": "processing_started"})
+                )
+
+                if not accumulated_text:
+                    return
+
+                # Join all fragments into a single user utterance
+                full_transcript = " ".join(accumulated_text)
+                accumulated_text = []
+
+                if not full_transcript.strip():
+                    return
+
+                if session.agent_is_speaking:
+                    await asyncio.sleep(0.3)
+                    if session.agent_is_speaking:
+                        try:
+                            await websocket.send_text(
+                                json.dumps({"event": "clear", "streamSid": stream_sid})
+                            )
+                            await event_bus.emit(
+                                CallEvent(
+                                    call_id, "clear_sent", {"stream_sid": stream_sid}
+                                )
+                            )
+                        except Exception:
+                            pass
+                        session.state_transition(AgentState.LISTENING)
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "state_transition",
+                                {"new_state": session.agent_state.value},
+                            )
+                        )
+
+                LOGGER.info(
+                    "[call=%s turn=%d] User: %r",
+                    call_id,
+                    session.next_turn_index,
+                    full_transcript,
+                )
+                await event_bus.emit(
+                    CallEvent(
+                        call_id,
+                        "user_speech",
+                        {
+                            "text": full_transcript,
+                            "turn": session.next_turn_index,
+                        },
+                    )
+                )
+
+                if isinstance(session.employee_profile, EmployeeProfile):
+                    matches = score_disclosure(
+                        full_transcript, session.employee_profile
+                    )
+                    for match in matches:
+                        LOGGER.info(
+                            "[call=%s] SCORING: tier=%d field=%s confidence=%.2f",
+                            call_id,
+                            match.tier,
+                            match.field_matched,
+                            match.confidence,
+                        )
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "scoring",
+                                {
+                                    "tier": int(match.tier),
+                                    "tier_label": match.tier.name.lower(),
+                                    "field": match.field_matched,
+                                    "disclosed": match.disclosed_value,
+                                    "confidence": match.confidence,
+                                    "turn": session.next_turn_index,
+                                },
+                            )
+                        )
+
+                # ── Persist user turn ──
+                redaction = redact_pii(full_transcript)
+                session.add_turn(
+                    TurnRole.USER,
+                    full_transcript
+                    if cfg.store_raw_transcripts
+                    else redaction.redacted_text,
+                    redacted_text=redaction.redacted_text,
+                )
+
+                last_speech_time[0] = time.monotonic()
+                t_start = time.monotonic()
+                first_byte_ms = 0.0
+                first_byte_sent = False
+                all_sentences: list[str] = []
+                tts_first_chunk_ms = 0.0
+                tts_first_chunk_sent = False
+                session.audio_send_bytes = 0
+
+                # Max turns enforcement
+                agent_session = session_store.get(call_id)
+                if agent_session is not None and agent_session.turn_count >= 10:
+                    LOGGER.info(
+                        "Max turns reached for call_id=%s, sending goodbye", call_id
+                    )
+                    goodbye = "Alright, I think we've covered everything. Thanks for your time, take care!"
+                    session.call_should_end = True
+                    session.end_reason = "max_turns"
+                    try:
+                        goodbye_audio = await text_to_speech(
+                            sanitize_for_tts(goodbye),
+                            voice_id=_voice_id(),
+                            call_id=call_id,
+                        )
+                        if stream_sid and goodbye_audio:
+                            session.state_transition(AgentState.SPEAKING)
+                            await event_bus.emit(
+                                CallEvent(
+                                    call_id,
+                                    "state_transition",
+                                    {"new_state": session.agent_state.value},
+                                )
+                            )
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "event": "media",
+                                        "streamSid": stream_sid,
+                                        "media": {
+                                            "payload": base64.b64encode(
+                                                goodbye_audio
+                                            ).decode()
+                                        },
+                                    }
+                                )
+                            )
+                    except Exception:
+                        LOGGER.warning(
+                            "Failed to send goodbye TTS for call_id=%s", call_id
+                        )
+                    return
+
+                async def _tts_with_retry(text):
+                    """Stream TTS chunks with single-retry fallback."""
+                    try:
+                        async for chunk in text_to_speech_streaming(
+                            text,
+                            voice_id=_voice_id(),
+                            call_id=call_id,
+                        ):
+                            yield chunk
+                    except Exception:
+                        LOGGER.warning(
+                            "TTS streaming failed for sentence, retrying: call_id=%s",
+                            call_id,
+                        )
+                        try:
+                            fallback_audio = await text_to_speech(
+                                text,
+                                voice_id=_voice_id(),
+                                call_id=call_id,
+                            )
+                            if fallback_audio:
+                                yield fallback_audio
+                        except Exception:
+                            LOGGER.warning(
+                                "TTS retry also failed for call_id=%s, skipping sentence",
+                                call_id,
+                            )
+
+                try:
+                    async for sentence in run_turn_streaming(call_id, full_transcript):
+                        if my_generation_id != generation_counter[0]:
+                            await event_bus.emit(
+                                CallEvent(
+                                    call_id,
+                                    "generation_cancelled",
+                                    {
+                                        "cancelled_id": my_generation_id,
+                                        "current_id": generation_counter[0],
+                                    },
+                                )
+                            )
+                            break
+
+                        all_sentences.append(sentence)
+                        t0_tts = time.monotonic()
+                        async for chunk in _tts_with_retry(sanitize_for_tts(sentence)):
+                            if my_generation_id != generation_counter[0]:
+                                break
+                            if not isinstance(chunk, bytes) or not chunk:
+                                continue
+                            tts_ms = (time.monotonic() - t0_tts) * 1000
+                            session.total_tts_ms += tts_ms
+                            t0_tts = time.monotonic()
+
+                            if stream_sid:
+                                if not first_byte_sent:
+                                    first_byte_ms = (time.monotonic() - t_start) * 1000
+                                    session.state_transition(AgentState.SPEAKING)
+                                    await event_bus.emit(
+                                        CallEvent(
+                                            call_id,
+                                            "state_transition",
+                                            {"new_state": session.agent_state.value},
+                                        )
+                                    )
+                                    first_byte_sent = True
+                                if not tts_first_chunk_sent:
+                                    tts_first_chunk_ms = (
+                                        time.monotonic() - t_start
+                                    ) * 1000
+                                    tts_first_chunk_sent = True
+                                session.audio_send_time = time.monotonic()
+                                session.audio_send_bytes += len(chunk)
+                                try:
+                                    await websocket.send_text(
+                                        json.dumps(
+                                            {
+                                                "event": "media",
+                                                "streamSid": stream_sid,
+                                                "media": {
+                                                    "payload": base64.b64encode(
+                                                        chunk
+                                                    ).decode(),
+                                                },
+                                            }
+                                        )
+                                    )
+                                    session.barge_in_cooldown_until = (
+                                        time.monotonic() + 0.5
+                                    )
+                                    session.audio_bytes_sent_total += len(chunk)
+                                except Exception:
+                                    session.add_error(
+                                        "twilio",
+                                        "send_failed",
+                                        f"Failed to send audio for turn {session.next_turn_index - 1}",
+                                    )
+                                    LOGGER.warning(
+                                        "Failed to send audio to Twilio call_id=%s",
+                                        call_id,
+                                    )
+
+                        if my_generation_id != generation_counter[0]:
+                            await event_bus.emit(
+                                CallEvent(
+                                    call_id,
+                                    "generation_cancelled",
+                                    {
+                                        "cancelled_id": my_generation_id,
+                                        "current_id": generation_counter[0],
+                                    },
+                                )
+                            )
+                            break
+                except Exception:
+                    LOGGER.exception(
+                        "Mistral agent reply failed for call_id=%s", call_id
+                    )
+                    all_sentences = [
+                        "I'm sorry, could you repeat that? I had trouble hearing you."
+                    ]
+
+                agent_text = " ".join(all_sentences).strip()
+                call_complete_detected = "[CALL_COMPLETE]" in agent_text
+                if call_complete_detected:
+                    agent_text = agent_text.replace("[CALL_COMPLETE]", "").strip()
+                    LOGGER.info("Call completion detected for call_id=%s", call_id)
+                    await event_bus.emit(
+                        CallEvent(
+                            call_id,
+                            "call_complete",
+                            {
+                                "reason": "objective_achieved",
+                                "final_text": agent_text,
+                            },
+                        )
+                    )
+                    session.call_should_end = True
+                    session.end_reason = "objective_achieved"
+
+                if stream_sid and agent_text and not first_byte_sent:
+                    t0_tts = time.monotonic()
+                    audio_bytes = await text_to_speech(
+                        sanitize_for_tts(agent_text),
+                        voice_id=_voice_id(),
+                        call_id=call_id,
+                    )
+                    tts_ms = (time.monotonic() - t0_tts) * 1000
+                    session.total_tts_ms += tts_ms
+                    if audio_bytes:
+                        first_byte_ms = (time.monotonic() - t_start) * 1000
+                        first_byte_sent = True
+                        session.state_transition(AgentState.SPEAKING)
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "state_transition",
+                                {"new_state": session.agent_state.value},
+                            )
+                        )
+                        session.audio_send_time = time.monotonic()
+                        session.audio_send_bytes = len(audio_bytes)
+                        try:
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "event": "media",
+                                        "streamSid": stream_sid,
+                                        "media": {
+                                            "payload": base64.b64encode(
+                                                audio_bytes
+                                            ).decode(),
+                                        },
+                                    }
+                                )
+                            )
+                            session.barge_in_cooldown_until = time.monotonic() + 0.5
+                            session.audio_bytes_sent_total += len(audio_bytes)
+                        except Exception:
+                            session.add_error(
+                                "twilio",
+                                "send_failed",
+                                f"Failed to send audio for turn {session.next_turn_index - 1}",
+                            )
+                            LOGGER.warning(
+                                "Failed to send audio to Twilio call_id=%s", call_id
+                            )
+                if stream_sid and agent_text:
+                    try:
                         await websocket.send_text(
                             json.dumps(
                                 {
@@ -574,51 +1307,223 @@ async def twilio_stream(websocket: WebSocket) -> None:
                                 }
                             )
                         )
-                        session.audio_bytes_sent_total += len(audio_bytes)
                     except Exception:
-                        session.add_error(
-                            "twilio",
-                            "send_failed",
-                            f"Failed to send audio for turn {session.next_turn_index - 1}",
+                        pass
+
+                agent_ms = (time.monotonic() - t_start) * 1000
+                session.total_agent_ms += agent_ms
+
+                LOGGER.info(
+                    "[call=%s turn=%d] Agent: %r (%.0fms)",
+                    call_id,
+                    session.next_turn_index,
+                    agent_text,
+                    agent_ms,
+                )
+                await event_bus.emit(
+                    CallEvent(
+                        call_id,
+                        "agent_reply",
+                        {
+                            "text": agent_text,
+                            "latency_ms": round(agent_ms, 1),
+                            "turn": session.next_turn_index,
+                        },
+                    )
+                )
+
+                await event_bus.emit(
+                    CallEvent(
+                        call_id,
+                        "timing",
+                        {
+                            "first_byte_ms": round(
+                                first_byte_ms if first_byte_sent else 0, 1
+                            ),
+                            "tts_first_chunk_ms": round(
+                                tts_first_chunk_ms if tts_first_chunk_sent else 0, 1
+                            ),
+                            "tts_ms": round(session.total_tts_ms, 1),
+                            "audio_bytes": session.audio_bytes_sent_total,
+                            "turn": session.next_turn_index,
+                        },
+                    )
+                )
+
+                if agent_text:
+                    session.add_turn(
+                        TurnRole.AGENT,
+                        agent_text,
+                        tts_duration_ms=session.total_tts_ms,
+                    )
+
+        try:
+            async for transcript in realtime_stt_session(audio_queue):
+                if session.agent_state == AgentState.LISTENING:
+                    last_speech_time[0] = time.monotonic()
+                    silence_state["nudge_sent"] = False
+                    await event_bus.emit(
+                        CallEvent(
+                            call_id, "silence_timer_reset", {"reason": "user_speech"}
                         )
-                        LOGGER.warning(
-                            "Failed to send audio to Twilio call_id=%s", call_id
+                    )
+
+                if not transcript.strip():
+                    continue
+
+                # Short transcript filter
+                if len(transcript.strip()) < 2:
+                    last_speech_time[0] = time.monotonic()
+                    silence_state["nudge_sent"] = False
+                    continue
+
+                # Backchannel detection — reset timer but don't process
+                if transcript.strip().lower() in _BACKCHANNEL_WORDS:
+                    last_speech_time[0] = time.monotonic()
+                    silence_state["nudge_sent"] = False
+                    LOGGER.debug(
+                        "Backchannel detected, skipping processing: %r",
+                        transcript.strip(),
+                    )
+                    continue
+
+                if not _is_latin_text(transcript):
+                    LOGGER.info("STT filtered non-Latin text: %r", transcript)
+                    await event_bus.emit(
+                        CallEvent(
+                            call_id,
+                            "stt_filtered",
+                            {"text": transcript, "reason": "non_latin"},
                         )
-                        break
+                    )
+                    last_speech_time[0] = time.monotonic()
+                    continue
+
+                await event_bus.emit(
+                    CallEvent(
+                        call_id,
+                        "stt_commit",
+                        {
+                            "text": transcript.strip(),
+                            "state_at_commit": session.agent_state.value,
+                            "accepted": session.agent_state == AgentState.LISTENING,
+                        },
+                    )
+                )
+
+                if session.agent_is_speaking:
+                    try:
+                        await websocket.send_text(
+                            json.dumps({"event": "clear", "streamSid": stream_sid})
+                        )
+                        await event_bus.emit(
+                            CallEvent(call_id, "clear_sent", {"stream_sid": stream_sid})
+                        )
+                    except Exception:
+                        pass
+                    session.state_transition(AgentState.LISTENING)
+                    await event_bus.emit(
+                        CallEvent(
+                            call_id,
+                            "state_transition",
+                            {"new_state": session.agent_state.value},
+                        )
+                    )
+                    generation_counter[0] += 1
+                    LOGGER.info(
+                        "STT barge-in: user spoke during agent audio, call_id=%s",
+                        call_id,
+                    )
+                    await event_bus.emit(
+                        CallEvent(
+                            call_id,
+                            "barge_in",
+                            {"source": "stt", "text": transcript.strip()},
+                        )
+                    )
+
+                # Accumulate transcript fragment
+                accumulated_text.append(transcript.strip())
+
+                # Cancel previous debounce timer if still waiting
+                if debounce_task and not debounce_task.done():
+                    debounce_task.cancel()
+
+                # Start new debounce timer
+                async def _debounce_then_process():
+                    await asyncio.sleep(DEBOUNCE_SECONDS)
+                    await _process_accumulated()
+
+                debounce_task = asyncio.create_task(_debounce_then_process())
 
         except Exception:
             LOGGER.exception("Agent loop error for call_id=%s", call_id)
             session.add_error(
                 "agent", "loop_error", "Unhandled exception in agent loop"
             )
+        finally:
+            # Process any remaining accumulated text
+            if accumulated_text:
+                try:
+                    await _process_accumulated()
+                except Exception:
+                    LOGGER.warning("Failed to process final accumulated text")
+            if debounce_task and not debounce_task.done():
+                debounce_task.cancel()
 
     # Run both coroutines concurrently
     receive_task = asyncio.create_task(_receive_twilio())
     agent_task = asyncio.create_task(_agent_loop())
+    silence_task = asyncio.create_task(_silence_monitor())
 
     try:
-        await asyncio.gather(receive_task, agent_task)
+        await asyncio.gather(receive_task, agent_task, silence_task)
     except Exception:
         LOGGER.exception("Stream error for call_id=%s", call_id)
     finally:
         receive_task.cancel()
         agent_task.cancel()
+        silence_task.cancel()
         try:
             await end_session(call_id)
         except Exception:
             LOGGER.warning(
                 "Failed to end agent session for call_id=%s", call_id, exc_info=True
             )
+        await event_bus.close_call(call_id)
         session.stream_ended_at = datetime.now(timezone.utc).isoformat()
 
-        # ── TODO(db): Persist ALL accumulated session data ──
-        # This is the primary DB integration point after the stream ends.
-        #   for turn in session.turns:
-        #       create_turn(turn.__dict__)
-        #   update_call(call_id, {
-        #       stream_sid, ended_at, recording_url,
-        #       disconnect_reason, metrics, ...
-        #   })
+        transcript_json = [
+            {
+                "role": turn.role.value,
+                "text": turn.text,
+                "redacted_text": turn.redacted_text,
+                "turn_index": turn.turn_index,
+                "timestamp_utc": turn.timestamp_utc,
+            }
+            for turn in session.turns
+        ]
+        transcript_lines: list[str] = []
+        for turn in session.turns:
+            role_label = "AGENT" if turn.role == TurnRole.AGENT else "USER"
+            line_text = turn.redacted_text or turn.text
+            transcript_lines.append(f"{role_label}: {line_text}")
+
+        call_update: dict[str, object] = {
+            "transcript": "\n".join(transcript_lines),
+            "transcript_json": transcript_json,
+            "ended_at": session.stream_ended_at,
+            "status": "completed",
+        }
+        if session.stream_started_at and session.stream_ended_at:
+            started_at = datetime.fromisoformat(session.stream_started_at)
+            ended_at = datetime.fromisoformat(session.stream_ended_at)
+            call_update["duration_seconds"] = int(
+                (ended_at - started_at).total_seconds()
+            )
+
+        _update_call_safe(call_id, call_update)
+
         summary = session.to_summary_dict()
         LOGGER.info(
             "Twilio Media Stream closed: call_id=%s — %s",
