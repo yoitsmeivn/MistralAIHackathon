@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.auth.middleware import OptionalUser
 from app.db import queries
 from app.models.api import CallEnriched, StartCallRequest, StartCallResponse
 from app.services.calls import start_call as svc_start_call
@@ -40,14 +41,19 @@ async def api_start_call(req: StartCallRequest) -> StartCallResponse:
 
 @router.get("/", response_model=list[CallEnriched])
 async def api_list_calls(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
     campaign_id: str | None = Query(None),
     employee_id: str | None = Query(None),
     status: str | None = Query(None),
     limit: int = Query(50, le=200),
 ) -> list[CallEnriched]:
+    resolved_org_id = user["org_id"] if user else org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     raw_calls = queries.list_calls(
-        org_id=org_id,
+        org_id=resolved_org_id,
         employee_id=employee_id,
         campaign_id=campaign_id,
         status=status,
@@ -55,9 +61,9 @@ async def api_list_calls(
     )
 
     # Build lookup dicts for names
-    employees = queries.list_employees(org_id, active_only=False)
-    callers = queries.list_callers(org_id, active_only=False)
-    campaigns = queries.list_campaigns(org_id)
+    employees = queries.list_employees(resolved_org_id, active_only=False)
+    callers = queries.list_callers(resolved_org_id, active_only=False)
+    campaigns = queries.list_campaigns(resolved_org_id)
 
     emp_names = {e["id"]: e.get("full_name", "") for e in employees}
     caller_names = {c["id"]: c.get("persona_name", "") for c in callers}
