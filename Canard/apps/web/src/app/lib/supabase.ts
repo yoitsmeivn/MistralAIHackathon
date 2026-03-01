@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -12,26 +12,7 @@ if (!supabaseConfigured) {
   );
 }
 
-const dummySupabase = new Proxy({}, {
-  get(_target, prop) {
-    if (prop === "auth") {
-      return new Proxy({}, {
-        get(_authTarget, authProp) {
-          return () => {
-            if (authProp === "getSession") return Promise.resolve({ data: { session: null }, error: null });
-            if (authProp === "onAuthStateChange") return { data: { subscription: { unsubscribe: () => {} } } };
-            throw new Error("Cannot connect to Supabase: Configuration missing in apps/web/.env");
-          };
-        }
-      });
-    }
-    return () => {
-      throw new Error("Cannot connect to Supabase: Configuration missing.");
-    };
-  }
-}) as unknown as SupabaseClient;
-
-// Create a real client when configured, or a dummy proxy so imports/clicks don't hard crash
+// Create a real client when configured, or a dummy placeholder so imports don't crash
 export const supabase: SupabaseClient = supabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!)
-  : dummySupabase;
+  : (null as unknown as SupabaseClient);

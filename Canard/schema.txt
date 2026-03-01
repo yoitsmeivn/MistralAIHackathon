@@ -1,0 +1,111 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.callers (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  created_by uuid,
+  persona_name character varying NOT NULL,
+  persona_role character varying,
+  persona_company character varying,
+  voice_profile jsonb DEFAULT '{}'::jsonb,
+  phone_number character varying,
+  attack_type character varying,
+  description text,
+  is_active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT callers_pkey PRIMARY KEY (id),
+  CONSTRAINT callers_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organizations(id),
+  CONSTRAINT callers_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.calls (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  campaign_id uuid,
+  caller_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  status character varying DEFAULT 'pending'::character varying,
+  started_at timestamp with time zone,
+  ended_at timestamp with time zone,
+  duration_seconds integer,
+  phone_from character varying,
+  phone_to character varying,
+  recording_url text,
+  transcript text,
+  transcript_json jsonb,
+  risk_score numeric CHECK (risk_score >= 0::numeric AND risk_score <= 100::numeric),
+  employee_compliance character varying,
+  flags jsonb DEFAULT '[]'::jsonb,
+  ai_summary text,
+  sentiment_analysis jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  twilio_call_sid text,
+  CONSTRAINT calls_pkey PRIMARY KEY (id),
+  CONSTRAINT calls_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organizations(id),
+  CONSTRAINT calls_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.campaigns(id),
+  CONSTRAINT calls_caller_id_fkey FOREIGN KEY (caller_id) REFERENCES public.callers(id),
+  CONSTRAINT calls_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id)
+);
+CREATE TABLE public.campaigns (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  created_by uuid,
+  name character varying NOT NULL,
+  description text,
+  attack_vector character varying,
+  status character varying DEFAULT 'draft'::character varying,
+  scheduled_at timestamp with time zone,
+  started_at timestamp with time zone,
+  completed_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT campaigns_pkey PRIMARY KEY (id),
+  CONSTRAINT campaigns_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organizations(id),
+  CONSTRAINT campaigns_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+);
+CREATE TABLE public.employees (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  full_name character varying NOT NULL,
+  email character varying,
+  phone character varying,
+  department character varying,
+  job_title character varying,
+  risk_level character varying DEFAULT 'unknown'::character varying,
+  notes text,
+  is_active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  boss_id uuid,
+  CONSTRAINT employees_pkey PRIMARY KEY (id),
+  CONSTRAINT employees_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organizations(id)
+);
+CREATE TABLE public.organizations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name character varying NOT NULL,
+  slug character varying NOT NULL UNIQUE,
+  industry character varying,
+  plan_tier character varying DEFAULT 'free'::character varying,
+  max_employees integer DEFAULT 50,
+  max_callers integer DEFAULT 10,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  domain text,
+  CONSTRAINT organizations_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.users (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  email character varying NOT NULL UNIQUE,
+  password_hash character varying NOT NULL,
+  full_name character varying NOT NULL,
+  role character varying DEFAULT 'admin'::character varying,
+  is_active boolean DEFAULT true,
+  last_login_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT users_pkey PRIMARY KEY (id),
+  CONSTRAINT users_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organizations(id)
+);
