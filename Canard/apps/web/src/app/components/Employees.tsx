@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { Plus, Search, Edit, Trash2, Upload } from "lucide-react";
 import { motion } from "motion/react";
@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import type { Employee } from "../types";
-import { getEmployees } from "../services/api";
+import { getEmployees, createEmployee, importEmployeesCSV } from "../services/api";
 
 const riskBadgeStyle = (risk: string) => {
   switch (risk) {
@@ -69,6 +69,14 @@ export function Employees() {
   const [filterRisk, setFilterRisk] = useState<string>("all");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    created: number;
+    updated: number;
+    errors: string[];
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -78,32 +86,67 @@ export function Employees() {
     jobTitle: "",
   });
 
+  const loadEmployees = () => {
+    setLoading(true);
+    getEmployees()
+      .then((data) => {
+        setEmployees(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  };
+
   useEffect(() => {
-    getEmployees().then((data) => {
-      setEmployees(data);
-      setLoading(false);
-    });
+    loadEmployees();
   }, []);
 
-  const handleCreateEmployee = () => {
-    const newEmployee: Employee = {
-      id: String(employees.length + 1),
-      ...formData,
-      riskLevel: "unknown",
-      totalTests: 0,
-      failedTests: 0,
-      lastTestDate: "Never",
-      isActive: true,
-    };
-    setEmployees([...employees, newEmployee]);
-    setShowModal(false);
-    setFormData({
-      fullName: "",
-      email: "",
-      phone: "",
-      department: "",
-      jobTitle: "",
-    });
+  const handleCreateEmployee = async () => {
+    setCreating(true);
+    try {
+      await createEmployee({
+        full_name: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        department: formData.department || undefined,
+        job_title: formData.jobTitle || undefined,
+      });
+      setShowModal(false);
+      setFormData({
+        fullName: "",
+        email: "",
+        phone: "",
+        department: "",
+        jobTitle: "",
+      });
+      loadEmployees();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to create employee");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so re-selecting the same file triggers change
+    e.target.value = "";
+
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const result = await importEmployeesCSV(file);
+      setImportResult(result);
+      loadEmployees();
+    } catch (err) {
+      setImportResult({
+        created: 0,
+        updated: 0,
+        errors: [err instanceof Error ? err.message : "Import failed"],
+      });
+    } finally {
+      setImporting(false);
+    }
   };
 
   const filteredEmployees = employees.filter((employee) => {
@@ -129,6 +172,15 @@ export function Employees() {
       initial="hidden"
       animate="show"
     >
+      {/* Hidden file input for CSV */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={handleCSVImport}
+      />
+
       {/* Header */}
       <motion.div
         className="mb-8 flex items-center justify-between"
@@ -143,9 +195,13 @@ export function Employees() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button
+            variant="outline"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
             <Upload className="w-4 h-4" />
-            Import CSV
+            {importing ? "Importing..." : "Import CSV"}
           </Button>
           <Button onClick={() => setShowModal(true)}>
             <Plus className="w-4 h-4" />
@@ -153,6 +209,59 @@ export function Employees() {
           </Button>
         </div>
       </motion.div>
+
+      {/* Import result banner */}
+      {importResult && (
+        <motion.div
+          className="mb-5 rounded-lg border p-4 text-sm"
+          style={{
+            backgroundColor: importResult.errors.length > 0 && importResult.created === 0 && importResult.updated === 0
+              ? "#fef2f2"
+              : "#f0fdf4",
+            borderColor: importResult.errors.length > 0 && importResult.created === 0 && importResult.updated === 0
+              ? "#fecaca"
+              : "#bbf7d0",
+          }}
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              {importResult.created > 0 && (
+                <span className="text-green-700 mr-3">
+                  {importResult.created} created
+                </span>
+              )}
+              {importResult.updated > 0 && (
+                <span className="text-blue-700 mr-3">
+                  {importResult.updated} updated
+                </span>
+              )}
+              {importResult.errors.length > 0 && (
+                <span className="text-red-600">
+                  {importResult.errors.length} error(s)
+                </span>
+              )}
+            </div>
+            <button
+              className="text-muted-foreground hover:text-foreground text-xs"
+              onClick={() => setImportResult(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+          {importResult.errors.length > 0 && (
+            <ul className="mt-2 text-xs text-red-600 space-y-0.5">
+              {importResult.errors.slice(0, 5).map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+              {importResult.errors.length > 5 && (
+                <li>...and {importResult.errors.length - 5} more</li>
+              )}
+            </ul>
+          )}
+        </motion.div>
+      )}
 
       {/* Filters */}
       <motion.div className="mb-5 flex gap-3 flex-wrap" variants={item}>
@@ -372,10 +481,10 @@ export function Employees() {
             <Button
               onClick={handleCreateEmployee}
               disabled={
-                !formData.fullName || !formData.email || !formData.department
+                creating || !formData.fullName || !formData.email || !formData.department
               }
             >
-              Add Employee
+              {creating ? "Adding..." : "Add Employee"}
             </Button>
           </DialogFooter>
         </DialogContent>
