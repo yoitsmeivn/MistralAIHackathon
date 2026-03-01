@@ -13,7 +13,8 @@ TODO(db): Wire to_summary_dict() output and individual TurnRecord objects
 
 from __future__ import annotations
 
-import time
+import logging
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -24,10 +25,17 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 class TurnRole(str, Enum):
     USER = "user"
     AGENT = "agent"
 
+class AgentState(str, Enum):
+    LISTENING = "listening"
+    PROCESSING = "processing"
+    SPEAKING = "speaking"
 
 @dataclass
 class TurnRecord:
@@ -121,6 +129,19 @@ class CallSessionData:
     audio_chunks_received: int = 0
     audio_bytes_sent_total: int = 0
 
+    employee_profile: object | None = None
+
+    # ── Barge-in state ──
+    agent_state: AgentState = field(default_factory=lambda: AgentState.LISTENING)
+    barge_in_cooldown_until: float = 0.0
+    audio_send_time: float = 0.0
+    audio_send_bytes: int = 0
+
+
+    @property
+    def agent_is_speaking(self) -> bool:
+        return self.agent_state == AgentState.SPEAKING
+
     # ------------------------------------------------------------------ helpers
 
     def add_turn(
@@ -142,6 +163,11 @@ class CallSessionData:
         if role == TurnRole.USER and not self.first_user_speech_at:
             self.first_user_speech_at = turn.timestamp_utc
         return turn
+
+
+    def state_transition(self, new_state: AgentState) -> None:
+        LOGGER.info("AgentState: %s → %s", self.agent_state.value, new_state.value)
+        self.agent_state = new_state
 
     def add_error(
         self, source: str, error_type: str, message: str, **ctx: Any
