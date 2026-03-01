@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confirm Your Email</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f4f4f4; padding: 40px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="480" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 14px; border: 1px solid rgba(37, 42, 57, 0.1); box-shadow: 0 10px 30px rgba(37, 42, 57, 0.05); overflow: hidden;">
+
+          <!-- Header with logo -->
+          <tr>
+            <td align="center" style="padding: 40px 32px 24px;">
+              <img src="https://aokqnrsadixfgksetykj.supabase.co/storage/v1/object/public/assets/logo.png" alt="Canard Security" width="240" style="display: block; height: auto;" />
+            </td>
+          </tr>
+
+          <!-- Heading -->
+          <tr>
+            <td align="center" style="padding: 0 32px;">
+              <h1 style="margin: 0 0 8px; font-size: 20px; font-weight: 500; color: #252a39; line-height: 1.4;">
+                Verify Your Email
+              </h1>
+              <p style="margin: 0 0 32px; font-size: 14px; color: #717182; line-height: 1.6;">
+                Thanks for signing up for Canard Security. Click the button below to confirm your email address.
+              </p>
+            </td>
+          </tr>
+
+          <!-- CTA Button -->
+          <tr>
+            <td align="center" style="padding: 0 32px 32px;">
+              <a href="{{ .ConfirmationURL }}" target="_blank" style="display: inline-block; background-color: #252a39; color: #ffffff; font-size: 14px; font-weight: 500; text-decoration: none; padding: 12px 32px; border-radius: 8px; line-height: 1;">
+                Confirm Email Address
+              </a>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding: 0 32px;">
+              <hr style="border: none; border-top: 1px solid rgba(37, 42, 57, 0.08); margin: 0;" />
+            </td>
+          </tr>
+
+          <!-- Fallback link -->
+          <tr>
+            <td style="padding: 24px 32px;">
+              <p style="margin: 0; font-size: 12px; color: #717182; line-height: 1.6;">
+                If the button doesn't work, copy and paste this link into your browser:
+              </p>
+              <p style="margin: 8px 0 0; font-size: 12px; color: #252a39; word-break: break-all; line-height: 1.6;">
+                {{ .ConfirmationURL }}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding: 24px 32px 32px; border-top: 1px solid rgba(37, 42, 57, 0.08);">
+              <p style="margin: 0; font-size: 12px; color: #717182; line-height: 1.6;">
+                Canard Security &copy; 2026
+              </p>
+              <p style="margin: 4px 0 0; font-size: 11px; color: #717182; line-height: 1.6;">
+                If you didn't create an account, you can safely ignore this email.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

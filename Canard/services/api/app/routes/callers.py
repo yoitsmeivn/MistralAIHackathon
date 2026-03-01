@@ -1,8 +1,9 @@
 # pyright: basic, reportMissingImports=false
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
+from app.auth.middleware import OptionalUser
 from app.db import queries
 from app.models.api import CallerListItem
 
@@ -11,10 +12,15 @@ router = APIRouter(prefix="/api/callers", tags=["callers"])
 
 @router.get("/", response_model=list[CallerListItem])
 async def api_list_callers(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> list[CallerListItem]:
-    callers = queries.list_callers(org_id, active_only=False)
-    all_calls = queries.list_calls(org_id=org_id, limit=10000)
+    resolved_org_id = user["org_id"] if user else org_id
+    if not resolved_org_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    callers = queries.list_callers(resolved_org_id, active_only=False)
+    all_calls = queries.list_calls(org_id=resolved_org_id, limit=10000)
 
     # Build per-caller aggregates
     caller_calls: dict[str, list[dict]] = {}
