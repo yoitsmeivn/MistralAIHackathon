@@ -63,8 +63,7 @@ class CallerListItem(CamelModel):
     persona_role: str = ""
     persona_company: str = ""
     phone_number: str = ""
-    attack_type: str = ""
-    description: str = ""
+    voice_profile: dict = Field(default_factory=dict)
     is_active: bool = True
     total_calls: int = 0
     avg_success_rate: int = 0

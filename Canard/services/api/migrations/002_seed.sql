@@ -22,19 +22,15 @@ INSERT INTO employees (id, org_id, full_name, email, phone, department, job_titl
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Callers (attacker personas) ──
-INSERT INTO callers (id, org_id, created_by, persona_name, persona_role, persona_company, phone_number, attack_type, description) VALUES
+INSERT INTO callers (id, org_id, created_by, persona_name, persona_role, persona_company, phone_number) VALUES
   ('00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'John Mitchell',    'IT Support Technician',   'TechSupport Solutions', '+15551234567', 'Technical Support Scam',
-   'Poses as IT support requesting password resets and remote access'),
+   'John Mitchell',    'IT Support Technician',   'TechSupport Solutions', '+15551234567'),
   ('00000000-0000-0000-0000-000000000202', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Robert Chen',      'Chief Executive Officer',  'Executive Office',      '+15552345678', 'Authority Impersonation',
-   'Impersonates CEO requesting urgent wire transfers'),
+   'Robert Chen',      'Chief Executive Officer',  'Executive Office',      '+15552345678'),
   ('00000000-0000-0000-0000-000000000203', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Amanda Stevens',   'Security Specialist',      'First National Bank',   '+15553456789', 'Urgency & Fear',
-   'Creates urgency by claiming account security breach'),
+   'Amanda Stevens',   'Security Specialist',      'First National Bank',   '+15553456789'),
   ('00000000-0000-0000-0000-000000000204', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'David Wilson',     'HR Benefits Manager',      'Human Resources',       '+15554567890', 'Internal Authority',
-   'Requests personal information for benefits verification')
+   'David Wilson',     'HR Benefits Manager',      'Human Resources',       '+15554567890')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Scripts ──

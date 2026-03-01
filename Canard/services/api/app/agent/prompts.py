@@ -218,8 +218,6 @@ def _build_from_dict(
         persona_name = caller.get("persona_name", "") or ""
         persona_role = caller.get("persona_role", "") or ""
         persona_company = caller.get("persona_company", "") or ""
-        if not attack_type:
-            attack_type = caller.get("attack_type", "") or ""
 
     # === Build prompt as a character brief, not a rule manual ===
 

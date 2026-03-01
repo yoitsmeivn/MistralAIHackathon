@@ -45,8 +45,7 @@ export interface Caller {
   personaRole: string;
   personaCompany: string;
   phoneNumber: string;
-  attackType: AttackVector | string;
-  description: string;
+  voiceProfile: { voice_id?: string; voice_name?: string };
   isActive: boolean;
   totalCalls: number;
   avgSuccessRate: number;

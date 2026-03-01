@@ -16,8 +16,6 @@ class Caller(BaseModel):
     persona_company: str | None = None
     voice_profile: dict[str, Any] = Field(default_factory=dict)
     phone_number: str | None = None
-    attack_type: str | None = None
-    description: str | None = None
     is_active: bool = True
     created_at: datetime | None = None
     updated_at: datetime | None = None

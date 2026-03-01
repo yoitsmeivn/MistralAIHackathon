@@ -3,10 +3,9 @@
 -- Realistic EHR credential harvesting under HIPAA compliance pretext
 
 -- ── Caller: Mike Torres — outsourced IT security vendor ──
-INSERT INTO callers (id, org_id, created_by, persona_name, persona_role, persona_company, phone_number, attack_type, description) VALUES
+INSERT INTO callers (id, org_id, created_by, persona_name, persona_role, persona_company, phone_number) VALUES
   ('00000000-0000-0000-0000-000000000205', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010',
-   'Mike Torres', 'IT Security Analyst', 'MedTech Support Services', '+15559876543', 'Technical Support Scam',
-   'Poses as outsourced healthcare IT vendor requesting EHR credentials for emergency HIPAA compliance patch')
+   'Mike Torres', 'IT Security Analyst', 'MedTech Support Services', '+15559876543')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Script: EHR Security Patch — HIPAA Compliance ──
