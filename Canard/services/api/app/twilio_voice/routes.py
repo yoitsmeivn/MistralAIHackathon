@@ -522,6 +522,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
 
         if greeting_audio and stream_sid:
             session.state_transition(AgentState.SPEAKING)
+            await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
             await websocket.send_text(
                 json.dumps(
                     {
@@ -606,7 +607,9 @@ async def twilio_stream(websocket: WebSocket) -> None:
                                         {"event": "clear", "streamSid": stream_sid}
                                     )
                                 )
+                                await event_bus.emit(CallEvent(call_id, "clear_sent", {"stream_sid": stream_sid}))
                                 session.state_transition(AgentState.LISTENING)
+                                await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                                 generation_counter[0] += 1
                                 consecutive_loud = 0
                                 last_speech_time[0] = time.monotonic()
@@ -654,6 +657,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     async def _echo_guard(mn: str = mark_name) -> None:
                         await asyncio.sleep(0.4)
                         session.state_transition(AgentState.LISTENING)
+                        await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                         await event_bus.emit(
                             CallEvent(
                                 call_id,
@@ -685,6 +689,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 expected_duration = session.audio_send_bytes / 8000.0
                 if time.monotonic() - session.audio_send_time > expected_duration + 3.0:
                     session.state_transition(AgentState.LISTENING)
+                    await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                     LOGGER.warning(
                         "Mark timeout: force-clearing agent_is_speaking for call_id=%s",
                         call_id,
@@ -709,6 +714,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     )
                     if stream_sid and goodbye_audio:
                         session.state_transition(AgentState.SPEAKING)
+                        await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                         await websocket.send_text(
                             json.dumps(
                                 {
@@ -764,6 +770,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     )
                     if stream_sid and nudge_audio:
                         session.state_transition(AgentState.SPEAKING)
+                        await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                         await websocket.send_text(
                             json.dumps(
                                 {
@@ -818,6 +825,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 generation_counter[0] += 1
                 my_generation_id = generation_counter[0]
                 session.state_transition(AgentState.PROCESSING)
+                await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                 await event_bus.emit(
                     CallEvent(call_id, "stt_gated", {"reason": "processing_started"})
                 )
@@ -839,9 +847,11 @@ async def twilio_stream(websocket: WebSocket) -> None:
                             await websocket.send_text(
                                 json.dumps({"event": "clear", "streamSid": stream_sid})
                             )
+                            await event_bus.emit(CallEvent(call_id, "clear_sent", {"stream_sid": stream_sid}))
                         except Exception:
                             pass
                         session.state_transition(AgentState.LISTENING)
+                        await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
 
                 LOGGER.info(
                     "[call=%s turn=%d] User: %r",
@@ -942,6 +952,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                                     tts_first_chunk_ms = (time.monotonic() - t_start) * 1000
                                     tts_first_chunk_sent = True
                                 session.state_transition(AgentState.SPEAKING)
+                                await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                                 session.audio_send_time = time.monotonic()
                                 session.audio_send_bytes += len(chunk)
                                 try:
@@ -1002,6 +1013,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                         first_byte_ms = (time.monotonic() - t_start) * 1000
                         first_byte_sent = True
                         session.state_transition(AgentState.SPEAKING)
+                        await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                         session.audio_send_time = time.monotonic()
                         session.audio_send_bytes = len(audio_bytes)
                         try:
@@ -1104,14 +1116,22 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 if not transcript.strip():
                     continue
 
+                await event_bus.emit(CallEvent(call_id, "stt_commit", {
+                    "text": transcript.strip(),
+                    "state_at_commit": session.agent_state.value,
+                    "accepted": session.agent_state == AgentState.LISTENING,
+                }))
+
                 if session.agent_is_speaking:
                     try:
                         await websocket.send_text(
                             json.dumps({"event": "clear", "streamSid": stream_sid})
                         )
+                        await event_bus.emit(CallEvent(call_id, "clear_sent", {"stream_sid": stream_sid}))
                     except Exception:
                         pass
                     session.state_transition(AgentState.LISTENING)
+                    await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
                     generation_counter[0] += 1
                     LOGGER.info(
                         "STT barge-in: user spoke during agent audio, call_id=%s",
