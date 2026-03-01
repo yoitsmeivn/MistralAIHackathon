@@ -14,7 +14,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { motion } from "motion/react";
-import { ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Skeleton } from "./ui/skeleton";
@@ -26,8 +26,9 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-import type { EmployeeAnalytics } from "../types";
-import { getEmployeeAnalytics } from "../services/api";
+import { OrgRiskTree } from "./analytics/OrgRiskTree";
+import type { EmployeeAnalytics, HierarchyRiskData } from "../types";
+import { getEmployeeAnalytics, getHierarchyRisk } from "../services/api";
 
 const getRiskColor = (score: number) => {
   if (score >= 75) return "#ef4444";
@@ -140,6 +141,7 @@ function RiskGauge({ score }: { score: number }) {
 export function EmployeeDetail() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<EmployeeAnalytics | null>(null);
+  const [hierarchyData, setHierarchyData] = useState<HierarchyRiskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedCall, setExpandedCall] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string>("startedAt");
@@ -147,8 +149,12 @@ export function EmployeeDetail() {
 
   useEffect(() => {
     if (!id) return;
-    getEmployeeAnalytics(id).then((d) => {
+    Promise.all([
+      getEmployeeAnalytics(id),
+      getHierarchyRisk(id).catch(() => null),
+    ]).then(([d, h]) => {
       setData(d);
+      setHierarchyData(h);
       setLoading(false);
     });
   }, [id]);
@@ -459,6 +465,65 @@ export function EmployeeDetail() {
                   </Badge>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Team Risk Overview */}
+      {hierarchyData && hierarchyData.totalDownstreamEmployees > 0 && (
+        <motion.div variants={item} className="mb-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">
+                  Team Risk Overview
+                </CardTitle>
+              </div>
+              <CardAction>
+                <Badge variant="secondary" className="text-xs">
+                  {hierarchyData.totalDownstreamEmployees} report{hierarchyData.totalDownstreamEmployees !== 1 ? "s" : ""}
+                </Badge>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              {/* Mini stats */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="rounded-lg border p-2.5 text-center">
+                  <p
+                    className="text-lg font-medium"
+                    style={{ color: getRiskColor(hierarchyData.manager.personalRiskScore) }}
+                  >
+                    {hierarchyData.manager.personalRiskScore}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Personal Risk</p>
+                </div>
+                <div className="rounded-lg border p-2.5 text-center">
+                  <p
+                    className="text-lg font-medium"
+                    style={{ color: getRiskColor(hierarchyData.manager.teamRiskScore) }}
+                  >
+                    {hierarchyData.manager.teamRiskScore}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Team Risk</p>
+                </div>
+                <div className="rounded-lg border p-2.5 text-center">
+                  <p className="text-lg font-medium text-foreground">
+                    {hierarchyData.manager.teamTotalTests}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Team Tests</p>
+                </div>
+                <div className="rounded-lg border p-2.5 text-center">
+                  <p className="text-lg font-medium text-red-500">
+                    {hierarchyData.manager.teamFailedTests}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Team Failures</p>
+                </div>
+              </div>
+
+              {/* Org Tree */}
+              <OrgRiskTree data={hierarchyData} />
             </CardContent>
           </Card>
         </motion.div>
