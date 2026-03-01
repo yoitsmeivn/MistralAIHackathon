@@ -63,6 +63,7 @@ _STAGE_DIRECTION_PATTERNS = [
     re.compile(r"\*[^*]{1,40}\*"),
     re.compile(r"(?<!\w)\.(?:period|dot)\b", re.IGNORECASE),
     re.compile(r"(?:^|\s)(?:lol|haha|hehe|rofl|lmao)(?:\s|$)", re.IGNORECASE),
+    re.compile(r"\[CALL_COMPLETE\]"),
 ]
 
 _MARKDOWN_PATTERNS = [
@@ -136,12 +137,18 @@ async def text_to_speech(
     )
 
     if call_id is not None:
-        await event_bus.emit(CallEvent(call_id, "tts_voice_used", {
-            "voice_id": selected_voice_id,
-            "model_id": "eleven_flash_v2_5",
-            "output_format": output_format,
-            "text_len": len(text),
-        }))
+        await event_bus.emit(
+            CallEvent(
+                call_id,
+                "tts_voice_used",
+                {
+                    "voice_id": selected_voice_id,
+                    "model_id": "eleven_flash_v2_5",
+                    "output_format": output_format,
+                    "text_len": len(text),
+                },
+            )
+        )
 
     client = _client()
 
@@ -186,12 +193,18 @@ async def text_to_speech_streaming(
     )
 
     if call_id is not None:
-        await event_bus.emit(CallEvent(call_id, "tts_voice_used", {
-            "voice_id": selected_voice_id,
-            "model_id": "eleven_flash_v2_5",
-            "output_format": output_format,
-            "text_len": len(text),
-        }))
+        await event_bus.emit(
+            CallEvent(
+                call_id,
+                "tts_voice_used",
+                {
+                    "voice_id": selected_voice_id,
+                    "model_id": "eleven_flash_v2_5",
+                    "output_format": output_format,
+                    "text_len": len(text),
+                },
+            )
+        )
 
     client = _client()
 

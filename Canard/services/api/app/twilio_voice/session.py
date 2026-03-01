@@ -32,10 +32,12 @@ class TurnRole(str, Enum):
     USER = "user"
     AGENT = "agent"
 
+
 class AgentState(str, Enum):
     LISTENING = "listening"
     PROCESSING = "processing"
     SPEAKING = "speaking"
+
 
 @dataclass
 class TurnRecord:
@@ -96,6 +98,7 @@ class CallSessionData:
     call_id: str
     twilio_call_sid: str = ""
     stream_sid: str = ""
+    caller_voice_id: str | None = None
 
     # ── Timing ──
     stream_started_at: str = ""
@@ -121,6 +124,8 @@ class CallSessionData:
     # ── Status ──
     call_status: str = "in-progress"
     disconnect_reason: str | None = None
+    call_should_end: bool = False
+    end_reason: str | None = None
 
     # ── Metrics ──
     total_stt_ms: float = 0.0
@@ -136,7 +141,6 @@ class CallSessionData:
     barge_in_cooldown_until: float = 0.0
     audio_send_time: float = 0.0
     audio_send_bytes: int = 0
-
 
     @property
     def agent_is_speaking(self) -> bool:
@@ -163,7 +167,6 @@ class CallSessionData:
         if role == TurnRole.USER and not self.first_user_speech_at:
             self.first_user_speech_at = turn.timestamp_utc
         return turn
-
 
     def state_transition(self, new_state: AgentState) -> None:
         LOGGER.info("AgentState: %s → %s", self.agent_state.value, new_state.value)

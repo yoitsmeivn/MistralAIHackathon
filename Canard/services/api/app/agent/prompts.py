@@ -7,7 +7,7 @@ import random
 STREAM_GREETING = "Hey, hi! Umm, is this a good moment to talk for a minute?"
 
 
-def build_greeting(caller: "dict | None" = None) -> str:
+def build_greeting(caller: "dict | None" = None, employee: "dict | None" = None) -> str:
     """Build a natural, varied greeting using the caller's persona."""
     if not caller:
         return STREAM_GREETING
@@ -18,6 +18,11 @@ def build_greeting(caller: "dict | None" = None) -> str:
         return STREAM_GREETING
     # Use first name only for casual feel
     first = name.split()[0] if name else name
+    target_first = ""
+    if employee:
+        target_name = employee.get("full_name", "")
+        if target_name:
+            target_first = target_name.split()[0]
     # Pick a casual label: role > company > nothing
     label = ""
     if role:
@@ -35,6 +40,19 @@ def build_greeting(caller: "dict | None" = None) -> str:
         f"Hi there, it's {first}. Do you have a sec?",
         f"Hey, this is {first}. Is now an okay time?",
     ]
+    templates_personalized = [
+        f"Hey {target_first}, it's {first} from {label}. Got a quick minute?",
+        f"Hi {target_first}, this is {first} over in {label}. Do you have a sec?",
+        f"Hey {target_first}, it's {first} with {label}. Is now an okay time?",
+    ]
+    templates_personalized_no_label = [
+        f"Hey {target_first}, it's {first}. Got a quick minute?",
+        f"Hi {target_first}, this is {first}. Do you have a sec?",
+    ]
+    if target_first and label:
+        return random.choice(templates_personalized)
+    if target_first:
+        return random.choice(templates_personalized_no_label)
     if label:
         return random.choice(templates_with_label)
     return random.choice(templates_no_label)
@@ -98,6 +116,34 @@ RESISTANCE_HANDLING = (
     "'I just don't want this to hold up the whole migration for your team, you know?' "
     "I give them two options that both work for me. "
     "If they say no three times, I wrap it up nice and move on."
+)
+
+CONVERSATION_NATURALNESS = (
+    "Conversation naturalness:\n"
+    "- Match response length to the moment: short for quick confirms, longer when you need to explain something clearly.\n"
+    "- Don't force a fixed word count if it sounds weird out loud.\n"
+    "- Vary reactions and fillers so you don't sound repetitive.\n"
+    "- Avoid defaulting to the same opener every turn (not always 'oh okay').\n"
+    "- Mirror the other person's pace and energy — calm if they're calm, brisk if they're brisk.\n"
+    "- Keep it conversational and human, not scripted or robotic.\n"
+    "- Still keep turns focused: one clear thought, then stop and wait."
+)
+
+UNCLEAR_SPEECH_HANDLING = (
+    "If their audio is garbled or unclear, handle it casually like a real call. "
+    "Say things like 'sorry, can you say that again?' or 'you're breaking up a bit on my end.' "
+    "Don't use robotic phrasing like 'I didn't understand.' "
+    "Keep it brief, then let them repeat and continue naturally."
+)
+
+COMPLETION_AWARENESS = (
+    "Objective tracking:\n"
+    "- Keep track of which objectives you've achieved during the call.\n"
+    "- When you've gotten what you needed OR the person has firmly refused 3+ times, "
+    "wrap up the call naturally.\n"
+    "- After your final goodbye message, append the tag [CALL_COMPLETE] at the very end.\n"
+    "- Example: 'alright thanks so much, take care! [CALL_COMPLETE]'\n"
+    "- Only use [CALL_COMPLETE] once, in your final message. Never use it mid-conversation."
 )
 
 
@@ -253,5 +299,8 @@ def _build_from_dict(
     parts.append(SOCIAL_ENGINEERING_TACTICS)
     parts.append(RESISTANCE_HANDLING)
     parts.append(SAFETY_GUARDRAILS)
+    parts.append(CONVERSATION_NATURALNESS)
+    parts.append(UNCLEAR_SPEECH_HANDLING)
+    parts.append(COMPLETION_AWARENESS)
 
     return "\n\n".join(parts)
