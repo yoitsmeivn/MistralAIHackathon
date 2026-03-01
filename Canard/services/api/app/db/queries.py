@@ -346,6 +346,17 @@ def list_calls(
     return result if isinstance(result, list) else []
 
 
+def get_subordinates(manager_id: str) -> list[dict]:
+    """Return all direct + transitive reports via the recursive RPC."""
+    try:
+        response = get_supabase().rpc(
+            "get_subordinates", {"manager_uuid": manager_id}
+        ).execute()
+        return response.data if isinstance(response.data, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def get_call_by_sid(twilio_call_sid: str) -> dict | None:
     """Look up a call by its Twilio CallSid."""
     result = _execute(

@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "./ui/table";
 import { HeatmapGrid } from "./analytics/HeatmapGrid";
+import { DeptFailurePivot } from "./analytics/DeptFailurePivot";
 import type {
   RiskTrendPoint,
   DepartmentTrendPoint,
@@ -40,6 +41,7 @@ import type {
   CampaignEffectivenessData,
   FlagFrequency,
   HeatmapCell,
+  DeptFlagPivotData,
 } from "../types";
 import {
   getRiskTrend,
@@ -48,6 +50,7 @@ import {
   getCampaignEffectiveness,
   getFlagFrequency,
   getAttackHeatmap,
+  getDeptFlagPivot,
 } from "../services/api";
 
 const getRiskColor = (score: number) => {
@@ -717,15 +720,19 @@ function CampaignsTab() {
 
 function VulnerabilitiesTab() {
   const [deptTrends, setDeptTrends] = useState<DepartmentTrendPoint[]>([]);
+  const [pivotData, setPivotData] = useState<DeptFlagPivotData | null>(null);
   const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    getDepartmentTrends(days).then((dt) => {
-      setDeptTrends(dt);
-      setLoading(false);
-    });
+    Promise.all([getDepartmentTrends(days), getDeptFlagPivot()]).then(
+      ([dt, pivot]) => {
+        setDeptTrends(dt);
+        setPivotData(pivot);
+        setLoading(false);
+      }
+    );
   }, [days]);
 
   if (loading) {
@@ -899,6 +906,22 @@ function VulnerabilitiesTab() {
           )}
         </div>
       </motion.div>
+
+      {/* Failure Types by Department Pivot */}
+      {pivotData && (
+        <motion.div variants={item}>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">
+                Failure Types by Department
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DeptFailurePivot data={pivotData} />
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
     </motion.div>
   );
 }

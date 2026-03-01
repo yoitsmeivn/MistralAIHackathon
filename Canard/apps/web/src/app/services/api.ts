@@ -13,6 +13,9 @@ import type {
   FlagFrequency,
   HeatmapCell,
   EmployeeAnalytics,
+  SmartWidgetsData,
+  DeptFlagPivotData,
+  HierarchyRiskData,
 } from "../types";
 import { supabase } from "../lib/supabase";
 
@@ -168,6 +171,19 @@ export async function getAttackHeatmap(): Promise<HeatmapCell[]> {
 
 export async function getEmployeeAnalytics(employeeId: string): Promise<EmployeeAnalytics> {
   return apiFetch<EmployeeAnalytics>(`/api/analytics/employee-detail/${employeeId}`);
+}
+
+export async function getSmartWidgets(): Promise<SmartWidgetsData> {
+  return apiFetch<SmartWidgetsData>("/api/dashboard/smart-widgets");
+}
+
+export async function getDeptFlagPivot(flagType?: string): Promise<DeptFlagPivotData> {
+  const extra = flagType ? `&flag_type=${flagType}` : "";
+  return apiFetch<DeptFlagPivotData>(`/api/analytics/dept-flag-pivot${extra}`);
+}
+
+export async function getHierarchyRisk(employeeId: string): Promise<HierarchyRiskData> {
+  return apiFetch<HierarchyRiskData>(`/api/analytics/hierarchy-risk/${employeeId}`);
 }
 
 // ─── Derived ────────────────────────────────────────────────────────
