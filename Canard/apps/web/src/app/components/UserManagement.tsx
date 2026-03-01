@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UserPlus, ShieldCheck, ArrowRightLeft } from "lucide-react";
+import { UserPlus, ShieldCheck, ArrowRightLeft, Mail } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -21,9 +21,9 @@ export function UserManagement() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [addError, setAddError] = useState("");
   const [addSubmitting, setAddSubmitting] = useState(false);
+  const [inviteSent, setInviteSent] = useState(false);
 
   // Transfer confirm state
   const [transferTarget, setTransferTarget] = useState<OrgUser | null>(null);
@@ -53,13 +53,11 @@ export function UserManagement() {
     try {
       await createOrgUser({
         email: newEmail,
-        password: newPassword,
         full_name: newName,
       });
-      setShowAddDialog(false);
+      setInviteSent(true);
       setNewEmail("");
       setNewName("");
-      setNewPassword("");
       await loadUsers();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to create user");
@@ -188,68 +186,86 @@ export function UserManagement() {
       {showAddDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl border p-6 w-full max-w-md mx-4">
-            <h2 className="text-lg font-semibold mb-4">Add Manager</h2>
+            {inviteSent ? (
+              <>
+                <div className="flex flex-col items-center text-center py-4">
+                  <div className="rounded-full bg-green-100 p-3 mb-3">
+                    <Mail className="size-6 text-green-600" />
+                  </div>
+                  <h2 className="text-lg font-semibold mb-1">Invite Sent</h2>
+                  <p className="text-sm text-muted-foreground">
+                    An invite email has been sent. They can set their own password using the link in the email.
+                  </p>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <Button
+                    onClick={() => {
+                      setShowAddDialog(false);
+                      setInviteSent(false);
+                    }}
+                    className="bg-[#252a39] text-white hover:bg-[#252a39]/90"
+                  >
+                    Done
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold mb-4">Invite Manager</h2>
 
-            {addError && (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {addError}
-              </div>
+                {addError && (
+                  <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {addError}
+                  </div>
+                )}
+
+                <form onSubmit={handleAddUser} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="add-name">Full Name *</Label>
+                    <Input
+                      id="add-name"
+                      placeholder="Jane Doe"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-email">Email *</Label>
+                    <Input
+                      id="add-email"
+                      type="email"
+                      placeholder="jane@acme.com"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      An invite email will be sent to this address
+                    </p>
+                  </div>
+                  <div className="flex gap-3 justify-end pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setShowAddDialog(false);
+                        setAddError("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={addSubmitting}
+                      className="bg-[#252a39] text-white hover:bg-[#252a39]/90"
+                    >
+                      {addSubmitting ? "Sending Invite..." : "Send Invite"}
+                    </Button>
+                  </div>
+                </form>
+              </>
             )}
-
-            <form onSubmit={handleAddUser} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="add-name">Full Name *</Label>
-                <Input
-                  id="add-name"
-                  placeholder="Jane Doe"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="add-email">Email *</Label>
-                <Input
-                  id="add-email"
-                  type="email"
-                  placeholder="jane@acme.com"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="add-password">Password *</Label>
-                <Input
-                  id="add-password"
-                  type="password"
-                  placeholder="Minimum 6 characters"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-              </div>
-              <div className="flex gap-3 justify-end pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setShowAddDialog(false);
-                    setAddError("");
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={addSubmitting}
-                  className="bg-[#252a39] text-white hover:bg-[#252a39]/90"
-                >
-                  {addSubmitting ? "Creating..." : "Create Manager"}
-                </Button>
-              </div>
-            </form>
           </div>
         </div>
       )}
