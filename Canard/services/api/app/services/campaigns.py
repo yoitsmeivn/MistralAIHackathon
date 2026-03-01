@@ -59,7 +59,7 @@ async def launch_campaign(
     campaign = queries.get_campaign(campaign_id)
     if not campaign:
         raise ValueError("Campaign not found")
-    if campaign.get("status") not in ("draft", "paused"):
+    if campaign.get("status") not in ("draft", "paused", "completed", "running"):
         raise ValueError(f"Campaign cannot be launched (status={campaign.get('status')})")
 
     org_id = campaign["org_id"]

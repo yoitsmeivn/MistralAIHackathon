@@ -1635,15 +1635,15 @@ async def twilio_stream(websocket: WebSocket) -> None:
 
         _update_call_safe(call_id, call_update)
 
-        # Fire evaluation AFTER transcript_json is persisted to avoid
+        # Run evaluation AFTER transcript_json is persisted to avoid
         # race condition with /status webhook triggering evaluation
         # before the stream has written transcript data.
+        # Awaited directly (not create_task) because fire-and-forget tasks
+        # get cancelled when the websocket handler returns.
         transcript_text = call_update.get("transcript")
-        asyncio.create_task(
-            _run_evaluation_safe(
-                call_id,
-                transcript_text if isinstance(transcript_text, str) else None,
-            )
+        await _run_evaluation_safe(
+            call_id,
+            transcript_text if isinstance(transcript_text, str) else None,
         )
 
         summary = session.to_summary_dict()
