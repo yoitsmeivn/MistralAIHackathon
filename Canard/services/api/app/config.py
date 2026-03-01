@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     mistral_api_key: str = ""
     mistral_base_url: str = "https://api.mistral.ai"
     mistral_model: str = "mistral-small-latest"
+    mistral_temperature: float = 0.8
+    mistral_max_context_tokens: int = 8000
 
     # ElevenLabs
     elevenlabs_api_key: str = ""
@@ -43,6 +45,10 @@ class Settings(BaseSettings):
 
     # Safety
     store_raw_transcripts: bool = False
+
+    # W&B Weave
+    wandb_api_key: str = ""
+    wandb_project: str = "canard"
 
     # Server
     port: int = 8000
