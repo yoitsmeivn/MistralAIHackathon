@@ -4,8 +4,9 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
+from app.auth.middleware import OptionalUser
 from app.db import queries
 from app.models.api import (
     AttackVectorSummary,
@@ -36,6 +37,13 @@ POSITIVE_FLAGS = {
 }
 
 
+def _resolve_org(user: dict | None, org_id: str | None) -> str:
+    resolved = user["org_id"] if user else org_id
+    if not resolved:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return resolved
+
+
 def _format_duration(seconds: int | None) -> str:
     if not seconds:
         return "0:00"
@@ -48,9 +56,11 @@ def _format_duration(seconds: int | None) -> str:
 
 @router.get("/risk-trend", response_model=list[RiskTrendPoint])
 async def api_risk_trend(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
     days: int = Query(30, le=90),
 ) -> list[RiskTrendPoint]:
+    org_id = _resolve_org(user, org_id)
     all_calls = queries.list_calls(org_id=org_id, limit=10000)
 
     today = datetime.now(timezone.utc).date()
@@ -88,9 +98,11 @@ async def api_risk_trend(
 
 @router.get("/department-trends", response_model=list[DepartmentTrendPoint])
 async def api_department_trends(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
     days: int = Query(30, le=90),
 ) -> list[DepartmentTrendPoint]:
+    org_id = _resolve_org(user, org_id)
     employees = queries.list_employees(org_id, active_only=False)
     all_calls = queries.list_calls(org_id=org_id, limit=10000)
 
@@ -144,9 +156,11 @@ async def api_department_trends(
 
 @router.get("/repeat-offenders", response_model=list[RepeatOffenderResponse])
 async def api_repeat_offenders(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
     min_failures: int = Query(2, ge=1),
 ) -> list[RepeatOffenderResponse]:
+    org_id = _resolve_org(user, org_id)
     employees = queries.list_employees(org_id, active_only=False)
     all_calls = queries.list_calls(org_id=org_id, limit=10000)
 
@@ -207,8 +221,10 @@ async def api_repeat_offenders(
 
 @router.get("/campaign-effectiveness", response_model=CampaignEffectivenessResponse)
 async def api_campaign_effectiveness(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> CampaignEffectivenessResponse:
+    org_id = _resolve_org(user, org_id)
     campaigns = queries.list_campaigns(org_id)
     all_calls = queries.list_calls(org_id=org_id, limit=10000)
 
@@ -286,9 +302,11 @@ async def api_campaign_effectiveness(
 
 @router.get("/flag-frequency", response_model=list[FlagFrequencyResponse])
 async def api_flag_frequency(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
     campaign_id: str | None = Query(None),
 ) -> list[FlagFrequencyResponse]:
+    org_id = _resolve_org(user, org_id)
     all_calls = queries.list_calls(
         org_id=org_id,
         campaign_id=campaign_id,
@@ -323,8 +341,10 @@ async def api_flag_frequency(
 
 @router.get("/attack-heatmap", response_model=list[HeatmapCellResponse])
 async def api_attack_heatmap(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> list[HeatmapCellResponse]:
+    org_id = _resolve_org(user, org_id)
     employees = queries.list_employees(org_id, active_only=False)
     campaigns = queries.list_campaigns(org_id)
     all_calls = queries.list_calls(org_id=org_id, limit=10000)
@@ -371,12 +391,13 @@ async def api_attack_heatmap(
 @router.get("/employee-detail/{employee_id}", response_model=EmployeeAnalyticsResponse)
 async def api_employee_detail(
     employee_id: str,
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> EmployeeAnalyticsResponse:
+    org_id = _resolve_org(user, org_id)
+
     emp = queries.get_employee(employee_id)
     if not emp:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="Employee not found")
 
     all_calls = queries.list_calls(org_id=org_id, employee_id=employee_id, limit=10000)
@@ -471,9 +492,11 @@ async def api_employee_detail(
 
 @router.get("/dept-flag-pivot", response_model=DeptFlagPivotResponse)
 async def api_dept_flag_pivot(
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
     flag_type: str | None = Query(None),
 ) -> DeptFlagPivotResponse:
+    org_id = _resolve_org(user, org_id)
     employees = queries.list_employees(org_id, active_only=False)
     all_calls = queries.list_calls(org_id=org_id, limit=10000)
 
@@ -540,9 +563,10 @@ async def api_dept_flag_pivot(
 @router.get("/hierarchy-risk/{employee_id}", response_model=HierarchyRiskResponse)
 async def api_hierarchy_risk(
     employee_id: str,
-    org_id: str = Query(...),
+    user: OptionalUser,
+    org_id: str | None = Query(None),
 ) -> HierarchyRiskResponse:
-    from fastapi import HTTPException
+    org_id = _resolve_org(user, org_id)
 
     emp = queries.get_employee(employee_id)
     if not emp:
