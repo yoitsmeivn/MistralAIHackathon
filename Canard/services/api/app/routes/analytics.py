@@ -37,6 +37,19 @@ POSITIVE_FLAGS = {
 }
 
 
+def _get_flag_str(f: Any) -> str:
+    if isinstance(f, str):
+        return f.replace("_", " ").title() if "_" in f and f.islower() else f
+    if isinstance(f, dict):
+        val = f.get("name") or f.get("flag") or f.get("type") or f.get("description")
+        if val:
+            val_str = str(val)
+            return val_str.replace("_", " ").title() if "_" in val_str and val_str.islower() else val_str
+        return str(f)
+    return str(f)
+
+
+
 def _resolve_org(user: dict | None, org_id: str | None) -> str:
     resolved = user["org_id"] if user else org_id
     if not resolved:
@@ -185,7 +198,7 @@ async def api_repeat_offenders(
         # Collect all flags across failures
         all_flags: list[str] = []
         for c in failed:
-            all_flags.extend(c.get("flags") or [])
+            all_flags.extend([_get_flag_str(f) for f in (c.get("flags") or [])])
         common = [f for f, _ in Counter(all_flags).most_common(3)]
 
         # Chronological risk scores for sparkline
@@ -320,8 +333,9 @@ async def api_flag_frequency(
 
     flag_counts: Counter[str] = Counter()
     for c in completed:
-        for flag in c.get("flags") or []:
-            flag_counts[flag] += 1
+        for f_raw in c.get("flags") or []:
+            flag_str = _get_flag_str(f_raw)
+            flag_counts[flag_str] += 1
 
     items: list[FlagFrequencyResponse] = []
     for flag, count in flag_counts.most_common():
@@ -429,8 +443,8 @@ async def api_employee_detail(
     # Flag summary
     flag_counts: Counter[str] = Counter()
     for c in completed:
-        for flag in c.get("flags") or []:
-            flag_counts[flag] += 1
+        for f_raw in c.get("flags") or []:
+            flag_counts[_get_flag_str(f_raw)] += 1
     flag_summary = [
         FlagFrequencyResponse(
             flag=flag,
@@ -459,7 +473,7 @@ async def api_employee_detail(
                 duration_seconds=dur_s,
                 risk_score=c.get("risk_score", 0) or 0,
                 employee_compliance=c.get("employee_compliance", ""),
-                flags=c.get("flags") or [],
+                flags=[_get_flag_str(f) for f in (c.get("flags") or [])],
                 ai_summary=c.get("ai_summary") or "",
             )
         )
@@ -516,16 +530,17 @@ async def api_dept_flag_pivot(
     for c in completed:
         eid = c.get("employee_id", "")
         dept = emp_lookup.get(eid, {}).get("department", "Other")
-        for flag in c.get("flags") or []:
-            is_pos = flag in POSITIVE_FLAGS
+        for f_raw in c.get("flags") or []:
+            flag_str = _get_flag_str(f_raw)
+            is_pos = flag_str in POSITIVE_FLAGS
             if flag_type == "positive" and not is_pos:
                 continue
             if flag_type == "negative" and is_pos:
                 continue
-            key = (dept, flag)
+            key = (dept, flag_str)
             pivot[key]["count"] += 1
             pivot[key]["employees"].add(eid)
-            flag_totals[flag] += 1
+            flag_totals[flag_str] += 1
 
     cells: list[DeptFlagPivotCell] = []
     for (dept, flag), data in pivot.items():

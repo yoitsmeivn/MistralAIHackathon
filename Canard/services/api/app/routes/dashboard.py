@@ -162,6 +162,19 @@ _POSITIVE_FLAGS = {
 }
 
 
+def _get_flag_str(f: Any) -> str:
+    if isinstance(f, str):
+        return f.replace("_", " ").title() if "_" in f and f.islower() else f
+    if isinstance(f, dict):
+        val = f.get("name") or f.get("flag") or f.get("type") or f.get("description")
+        if val:
+            val_str = str(val)
+            return val_str.replace("_", " ").title() if "_" in val_str and val_str.islower() else val_str
+        return str(f)
+    return str(f)
+
+
+
 @router.get("/smart-widgets", response_model=SmartWidgetsResponse)
 async def api_smart_widgets(
     user: OptionalUser,
@@ -196,9 +209,10 @@ async def api_smart_widgets(
         es["total"] += 1
         if c.get("employee_compliance") == "failed":
             es["failed"] += 1
-        for flag in c.get("flags") or []:
-            if flag not in _POSITIVE_FLAGS:
-                es["flags"].append(flag)
+        for f_raw in c.get("flags") or []:
+            flag_str = _get_flag_str(f_raw)
+            if flag_str not in _POSITIVE_FLAGS:
+                es["flags"].append(flag_str)
 
     # Department aggregates
     dept_agg: dict[str, dict] = defaultdict(lambda: {"scores": [], "total": 0, "failed": 0, "emps": set()})
@@ -296,9 +310,10 @@ async def api_smart_widgets(
 
     neg_flags: Counter[str] = Counter()
     for c in failures_30d:
-        for flag in c.get("flags") or []:
-            if flag not in _POSITIVE_FLAGS:
-                neg_flags[flag] += 1
+        for f_raw in c.get("flags") or []:
+            flag_str = _get_flag_str(f_raw)
+            if flag_str not in _POSITIVE_FLAGS:
+                neg_flags[flag_str] += 1
     most_common_flag = neg_flags.most_common(1)[0][0] if neg_flags else ""
 
     sorted_failures = sorted(failed_calls, key=lambda x: x.get("started_at") or "", reverse=True)[:10]
@@ -310,7 +325,7 @@ async def api_smart_widgets(
             department=emp_lookup.get(c.get("employee_id", ""), {}).get("department", ""),
             attack_vector=camp_lookup.get(c.get("campaign_id", ""), {}).get("attack_vector", "Unknown"),
             risk_score=c.get("risk_score", 0) or 0,
-            flags=[f for f in (c.get("flags") or []) if f not in _POSITIVE_FLAGS],
+            flags=[_get_flag_str(f) for f in (c.get("flags") or []) if _get_flag_str(f) not in _POSITIVE_FLAGS],
             occurred_at=c.get("started_at") or c.get("created_at") or "",
         )
         for c in sorted_failures
