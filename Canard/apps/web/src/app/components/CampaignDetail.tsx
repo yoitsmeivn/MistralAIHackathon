@@ -116,7 +116,6 @@ export function CampaignDetail() {
     name: "",
     attack_type: "",
     difficulty: "medium",
-    system_prompt: "",
     objectives: "",
     escalation_steps: "",
     description: "",
@@ -262,7 +261,6 @@ export function CampaignDetail() {
       name: script.name,
       attack_type: script.attackType,
       difficulty: script.difficulty,
-      system_prompt: script.systemPrompt,
       objectives: script.objectives.join(", "),
       escalation_steps: script.escalationSteps.join(", "),
       description: script.description,
@@ -276,7 +274,6 @@ export function CampaignDetail() {
       name: "",
       attack_type: "",
       difficulty: "medium",
-      system_prompt: "",
       objectives: "",
       escalation_steps: "",
       description: "",
@@ -291,7 +288,6 @@ export function CampaignDetail() {
         name: scriptForm.name,
         attack_type: scriptForm.attack_type,
         difficulty: scriptForm.difficulty,
-        system_prompt: scriptForm.system_prompt,
         objectives: scriptForm.objectives.split(",").map((s) => s.trim()).filter(Boolean),
         escalation_steps: scriptForm.escalation_steps.split(",").map((s) => s.trim()).filter(Boolean),
         description: scriptForm.description,
@@ -809,16 +805,6 @@ export function CampaignDetail() {
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">System Prompt</label>
-              <textarea
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono text-xs"
-                rows={6}
-                value={scriptForm.system_prompt}
-                onChange={(e) => setScriptForm({ ...scriptForm, system_prompt: e.target.value })}
-              />
-            </div>
-
-            <div>
               <label className="block text-xs text-muted-foreground mb-1.5">
                 Escalation Steps <span className="text-muted-foreground/60">(comma-separated)</span>
               </label>
@@ -837,7 +823,7 @@ export function CampaignDetail() {
             </Button>
             <Button
               onClick={handleSaveScript}
-              disabled={saving || !scriptForm.name || !scriptForm.system_prompt}
+              disabled={saving || !scriptForm.name}
             >
               {saving ? (
                 <>

@@ -108,7 +108,6 @@ export interface Script {
   campaignName: string | null;
   attackType: string;
   difficulty: ScriptDifficulty;
-  systemPrompt: string;
   objectives: string[];
   escalationSteps: string[];
   description: string;

@@ -16,7 +16,6 @@ class CreateScriptRequest(BaseModel):
     campaign_id: str | None = None
     attack_type: str = ""
     difficulty: str = "medium"
-    system_prompt: str
     objectives: list[str] = []
     escalation_steps: list[str] = []
     description: str = ""
@@ -28,7 +27,6 @@ class UpdateScriptRequest(BaseModel):
     campaign_id: str | None = None
     attack_type: str | None = None
     difficulty: str | None = None
-    system_prompt: str | None = None
     objectives: list[str] | None = None
     escalation_steps: list[str] | None = None
     description: str | None = None

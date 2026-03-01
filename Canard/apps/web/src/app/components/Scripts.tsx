@@ -50,7 +50,6 @@ const emptyFormData = {
   campaignId: "",
   attackType: "",
   difficulty: "medium" as ScriptDifficulty,
-  systemPrompt: "",
   description: "",
   objectives: [] as string[],
   escalationSteps: [] as string[],
@@ -93,7 +92,6 @@ export function Scripts() {
       campaignId: script.campaignId || "",
       attackType: script.attackType,
       difficulty: script.difficulty,
-      systemPrompt: script.systemPrompt,
       description: script.description,
       objectives: [...script.objectives],
       escalationSteps: [...script.escalationSteps],
@@ -109,7 +107,6 @@ export function Scripts() {
           campaign_id: formData.campaignId || undefined,
           attack_type: formData.attackType || undefined,
           difficulty: formData.difficulty,
-          system_prompt: formData.systemPrompt,
           description: formData.description || undefined,
           objectives: formData.objectives,
           escalation_steps: formData.escalationSteps,
@@ -120,7 +117,6 @@ export function Scripts() {
           campaign_id: formData.campaignId,
           attack_type: formData.attackType || undefined,
           difficulty: formData.difficulty,
-          system_prompt: formData.systemPrompt,
           description: formData.description || undefined,
           objectives: formData.objectives,
           escalation_steps: formData.escalationSteps,
@@ -384,19 +380,6 @@ export function Scripts() {
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1.5">
-                System Prompt
-              </label>
-              <textarea
-                value={formData.systemPrompt}
-                onChange={(e) => setFormData({ ...formData, systemPrompt: e.target.value })}
-                rows={4}
-                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring/50 bg-input-background resize-none"
-                placeholder="The system prompt for the AI caller..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">
                 Description
               </label>
               <textarea
@@ -475,7 +458,7 @@ export function Scripts() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!formData.name || !formData.systemPrompt || !formData.campaignId}
+              disabled={!formData.name || !formData.campaignId}
             >
               {editingId ? "Save Changes" : "Create Script"}
             </Button>

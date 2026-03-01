@@ -174,7 +174,6 @@ export async function createScript(data: {
   campaign_id: string;
   attack_type?: string;
   difficulty?: string;
-  system_prompt: string;
   objectives?: string[];
   escalation_steps?: string[];
   description?: string;

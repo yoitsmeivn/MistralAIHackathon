@@ -125,8 +125,6 @@ def _build_from_dict(script: dict, caller: "dict | None") -> str:
     escalation_steps = selected_escalation_steps or _parse_list_field(
         script.get("escalation_steps", [])
     )
-    custom_base = script.get("system_prompt", "") or ""
-
     # Caller persona fields
     persona_name = ""
     persona_role = ""
@@ -138,14 +136,10 @@ def _build_from_dict(script: dict, caller: "dict | None") -> str:
         if not attack_type:
             attack_type = caller.get("attack_type", "") or ""
 
-    # Build prompt
-    if custom_base.strip():
-        # Use custom base, then append dynamic sections + guardrails
-        parts = [custom_base.strip()]
-    else:
-        parts = [
-            "You are a simulated caller conducting a security awareness training exercise."
-        ]
+    # Build prompt — caller is source of truth, script provides objectives/context
+    parts = [
+        "You are a simulated caller conducting a security awareness training exercise."
+    ]
 
     # Persona line
     if persona_name or persona_role or persona_company:

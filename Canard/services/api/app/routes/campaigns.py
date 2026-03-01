@@ -139,7 +139,6 @@ async def api_get_campaign_scripts(campaign_id: str) -> list[ScriptListItem]:
             campaign_name=camp_name,
             attack_type=s.get("attack_type", ""),
             difficulty=s.get("difficulty", "medium"),
-            system_prompt=s.get("system_prompt", ""),
             objectives=s.get("objectives", []),
             escalation_steps=s.get("escalation_steps", []),
             description=s.get("description", ""),
