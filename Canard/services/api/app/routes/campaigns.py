@@ -41,10 +41,10 @@ def _enrich_campaigns(
         items.append(
             CampaignListItem(
                 id=cid,
-                name=camp.get("name", ""),
-                description=camp.get("description", ""),
-                attack_vector=camp.get("attack_vector", ""),
-                status=camp.get("status", "draft"),
+                name=camp.get("name") or "",
+                description=camp.get("description") or "",
+                attack_vector=camp.get("attack_vector") or "",
+                status=camp.get("status") or "draft",
                 scheduled_at=camp.get("scheduled_at"),
                 started_at=camp.get("started_at"),
                 completed_at=camp.get("completed_at"),

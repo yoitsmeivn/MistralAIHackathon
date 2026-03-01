@@ -466,7 +466,7 @@ export function CallMonitoring() {
           {selectedCall && (
             <>
               <SheetHeader className="pb-4">
-                <div className="flex items-center justify-between mt-2">
+                <div className="flex items-center gap-2 mt-2 pr-8">
                   <Badge
                     className="capitalize border-0"
                     style={statusBadgeStyle(selectedCall.status)}
