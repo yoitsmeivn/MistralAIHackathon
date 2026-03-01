@@ -13,3 +13,4 @@ mistralai>=1.0.0
 pydub>=0.25.0
 weave>=0.51.0
 resend>=2.0.0
+fpdf2>=2.7.0
