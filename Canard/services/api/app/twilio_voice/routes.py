@@ -1648,6 +1648,7 @@ async def _send_audit_email_safe(call_id: str, eval_result: dict) -> None:
     """Send audit email after evaluation — best-effort, never raises."""
     try:
         from app.db import queries
+        from app.services.audit_pdf import generate_audit_pdf, upload_audit_pdf
 
         call = queries.get_call(call_id)
         if not call:
@@ -1670,15 +1671,53 @@ async def _send_audit_email_safe(call_id: str, eval_result: dict) -> None:
         if isinstance(flags, str):
             flags = [flags]
 
+        campaign_name = campaign.get("name", "") if campaign else ""
+        employee_name = employee.get("full_name", "")
+        risk_score = call.get("risk_score") or 0
+        compliance = call.get("employee_compliance") or ""
+        ai_summary = call.get("ai_summary") or ""
+        transcript = call.get("transcript") or ""
+
+        # Parse transcript_json from call record (may be stored as JSON string)
+        transcript_json_raw = call.get("transcript_json") or []
+        if isinstance(transcript_json_raw, str):
+            try:
+                transcript_json_raw = json.loads(transcript_json_raw)
+            except (json.JSONDecodeError, ValueError):
+                transcript_json_raw = []
+        transcript_json: list[dict] = transcript_json_raw if isinstance(transcript_json_raw, list) else []
+
+        # ── Generate & upload audit PDF ──
+        try:
+            pdf_bytes = generate_audit_pdf(
+                call_id=call_id,
+                call_date=call.get("created_at") or call.get("started_at") or "",
+                campaign_name=campaign_name,
+                employee_name=employee_name,
+                department=employee.get("department") or "",
+                job_title=employee.get("job_title") or "",
+                risk_score=risk_score,
+                compliance=compliance,
+                ai_summary=ai_summary,
+                flags=flags,
+                transcript_json=transcript_json,
+            )
+            pdf_url = upload_audit_pdf(call_id, pdf_bytes)
+            if pdf_url:
+                _update_call_safe(call_id, {"audit_report_url": pdf_url})
+        except Exception:
+            LOGGER.warning("Audit PDF generation/upload failed for call %s", call_id, exc_info=True)
+
+        # ── Send email ──
         email_id = send_test_results_email(
             to_email=to_email,
-            employee_name=employee.get("full_name", ""),
-            risk_score=call.get("risk_score") or 0,
-            compliance=call.get("employee_compliance") or "",
-            ai_summary=call.get("ai_summary") or "",
+            employee_name=employee_name,
+            risk_score=risk_score,
+            compliance=compliance,
+            ai_summary=ai_summary,
             flags=flags,
-            transcript=call.get("transcript") or "",
-            campaign_name=campaign.get("name", "") if campaign else "",
+            transcript=transcript,
+            campaign_name=campaign_name,
         )
 
         if email_id:
