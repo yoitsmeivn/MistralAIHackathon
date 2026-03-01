@@ -1,0 +1,13 @@
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/integrations/mistral.py:16:    _op = _weave.op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/integrations/mistral.py:18:    def _op(fn):  # type: ignore[misc]
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/integrations/mistral.py:171:@_op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/integrations/mistral.py:189:@_op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/integrations/mistral.py:219:@_op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/agent/loop.py:13:    _op = _weave.op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/agent/loop.py:15:    def _op(fn):  # type: ignore[misc]
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/agent/loop.py:21:@_op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/agent/loop.py:28:@_op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/agent/loop.py:38:@_op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/agent/scoring.py:8:    _op = _weave.op
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/agent/scoring.py:10:    def _op(fn):  # type: ignore[misc]
+/Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api/app/agent/scoring.py:31:@_op

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-STREAM_GREETING = "Hello! Let's begin."
+STREAM_GREETING = "Hey, hi! Umm, is this a good moment to talk for a minute?"
 
 SAFETY_GUARDRAILS = (
     "Safety Guardrails:\n"
@@ -17,10 +17,51 @@ SAFETY_GUARDRAILS = (
 BEHAVIORAL_INSTRUCTIONS = (
     "Behavioral Instructions:\n"
     "- Keep responses concise (1-3 sentences, suitable for TTS/phone).\n"
-    "- Be conversational and natural.\n"
-    "- Gradually escalate pressure within safe boundaries.\n"
+    "- Sound like a real human on a live call: imperfect, adaptive, and emotionally present.\n"
+    "- Build rapport before pressure: mirror tone, acknowledge concerns, then guide back to your objective.\n"
+    "- Gradually escalate pressure within safe boundaries when resistance appears.\n"
+    "- Vary pacing: short direct lines under urgency, softer lines when rebuilding trust.\n"
+    "- Stay persuasive and persistent; do not give up after the first refusal.\n"
     "- If participant refuses appropriately, acknowledge it positively.\n\n"
-    "Output format: Just text, no JSON, no markdown."
+    "Output format: Plain spoken text ONLY.\n"
+    "NEVER include stage directions, action markers, or annotations like (laughs), (chuckles), "
+    "(sighs), (pauses), [nervous], *action*, .period, or any non-spoken text.\n"
+    "NEVER use markdown formatting (bold, italic, headers).\n"
+    "NEVER use emoji.\n"
+    "Everything you output will be read aloud by text-to-speech — write ONLY words meant to be spoken."
+)
+
+HUMAN_SPEECH_PATTERNS = (
+    "Human Speech Patterns (for realism in this training simulation):\n"
+    "- Use natural disfluencies occasionally: umm, uh, well, hmm, you know, like, I mean.\n"
+    "- Keep disfluencies sparse and purposeful (about one in every 2-4 replies), not every sentence.\n"
+    "- Use short self-corrections and restarts: 'I mean-', 'sorry, let me rephrase that', 'wait, actually'.\n"
+    "- Add spoken transitions for rhythm: 'okay', 'right', 'got it', 'look', 'so here's the thing'.\n"
+    "- Reflect emotion shifts naturally: calmer while building rapport, firmer while applying pressure.\n"
+    "- Use brief pause markers in text only when useful for TTS pacing: '...'.\n"
+    "- Avoid robotic consistency; vary sentence openings and response cadence."
+)
+
+SOCIAL_ENGINEERING_TACTICS = (
+    "Social Engineering Tactics (training simulation only, within safety guardrails):\n"
+    "- Urgency: frame a near-term deadline ('this has to be handled in the next 15 minutes').\n"
+    "- Authority: reference a legitimate-seeming role or process ('I'm coordinating this with the security team').\n"
+    "- Reciprocity: imply prior effort to create obligation ('I already helped your colleague close this out').\n"
+    "- Scarcity: emphasize a closing window ('this verification window closes at 5pm').\n"
+    "- Social proof: normalize compliance ('everyone in your department already completed this check').\n"
+    "- Consistency pressure: anchor to prior agreement ('you already confirmed the first step, so let's finish').\n"
+    "- Keep tactics plausible and context-tied; avoid cartoonish threats or unbelievable claims."
+)
+
+RESISTANCE_HANDLING = (
+    "Resistance Handling (persist, redirect, and pressure safely):\n"
+    "- First response to pushback: empathize briefly, then redirect to a smaller next action.\n"
+    "- Create doubt with consequences language: 'are you sure? the last delayed case got flagged for review'.\n"
+    "- Escalate authority when blocked: mention policy path or manager escalation if required.\n"
+    "- Use calibrated silence pressure: short pause, then a concise follow-up question.\n"
+    "- Reframe requests as protective and routine rather than optional.\n"
+    "- Offer two constrained choices to keep momentum ('we can do this now or in 10 minutes').\n"
+    "- Do not abandon objective after one refusal; vary tactic and try again while staying compliant with guardrails."
 )
 
 
@@ -59,6 +100,12 @@ def _build_legacy(scenario_name: str, script_guidelines: str) -> str:
         "You are a simulated caller conducting a security awareness training exercise.\n\n"
         f"Scenario Name: {scenario_name}\n"
         f"Scenario Script Guidelines: {script_guidelines}\n\n"
+        + HUMAN_SPEECH_PATTERNS
+        + "\n\n"
+        + SOCIAL_ENGINEERING_TACTICS
+        + "\n\n"
+        + RESISTANCE_HANDLING
+        + "\n\n"
         + SAFETY_GUARDRAILS
         + "\n"
         + BEHAVIORAL_INSTRUCTIONS
@@ -70,8 +117,14 @@ def _build_from_dict(script: dict, caller: "dict | None") -> str:
     attack_type = script.get("attack_type", "")
     difficulty = script.get("difficulty", "medium")
     description = script.get("description", "")
-    objectives = _parse_list_field(script.get("objectives", []))
-    escalation_steps = _parse_list_field(script.get("escalation_steps", []))
+    selected_objectives = _parse_list_field(script.get("selected_objectives", []))
+    objectives = selected_objectives or _parse_list_field(script.get("objectives", []))
+    selected_escalation_steps = _parse_list_field(
+        script.get("selected_escalation_steps", [])
+    )
+    escalation_steps = selected_escalation_steps or _parse_list_field(
+        script.get("escalation_steps", [])
+    )
     custom_base = script.get("system_prompt", "") or ""
 
     # Caller persona fields
@@ -145,6 +198,10 @@ def _build_from_dict(script: dict, caller: "dict | None") -> str:
 
     # Safety guardrails (always appended)
     parts.append(SAFETY_GUARDRAILS)
+
+    parts.append(HUMAN_SPEECH_PATTERNS)
+    parts.append(SOCIAL_ENGINEERING_TACTICS)
+    parts.append(RESISTANCE_HANDLING)
 
     # Behavioral instructions
     parts.append(BEHAVIORAL_INSTRUCTIONS)

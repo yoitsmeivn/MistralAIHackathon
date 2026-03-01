@@ -1,0 +1,21 @@
+Task 4 - get_context_usage() evidence
+Run: 2026-02-28
+
+Script:
+  from app.agent.memory import session_store
+  s = session_store.create('test-usage', 'script-1', 'System prompt here')
+  session_store.add_message('test-usage', 'user', 'Hello')
+  usage = session_store.get_context_usage('test-usage')
+  assert 'estimated_tokens' in usage
+  assert 'budget' in usage
+  print(f'OK: {usage}')
+
+Output:
+  OK: {'estimated_tokens': 8, 'message_count': 2, 'budget': 8000, 'utilization_pct': 0.1}
+
+Verification:
+  - 'estimated_tokens' key present: PASS
+  - 'message_count' key present: PASS (2 messages: system + user)
+  - 'budget' key present: PASS (8000 from settings.mistral_max_context_tokens)
+  - 'utilization_pct' key present: PASS (0.1%)
+  - All 4 required keys returned: PASS

@@ -58,5 +58,5 @@ def make_outbound_call(
         create_kwargs["recording_status_callback_method"] = "POST"
         create_kwargs["recording_status_callback_event"] = ["completed"]
 
-    call = _client().calls.create(**create_kwargs)
+    call = _get_client().calls.create(**create_kwargs)
     return call.sid

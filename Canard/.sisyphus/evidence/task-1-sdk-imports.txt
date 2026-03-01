@@ -1,0 +1,5 @@
+Command:
+python -c "from app.integrations.mistral import chat_completion, chat_completion_stream, analyze_transcript; print('OK')"
+
+Output:
+OK

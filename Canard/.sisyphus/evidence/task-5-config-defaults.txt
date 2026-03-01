@@ -1,0 +1,17 @@
+QA Verification for Task 5: Config Defaults
+=============================================
+
+Command executed:
+cd /Users/ivansandroid/Desktop/MistralAIHackathon/Canard/services/api && source .venv/bin/activate && python -c "from app.config import settings; assert settings.wandb_project == 'canard'; assert settings.mistral_max_context_tokens == 8000; assert settings.mistral_temperature == 0.8; assert settings.wandb_api_key == ''; print('OK')"
+
+Output: OK
+
+Status: PASSED ✓
+
+All 4 new config fields verified:
+- wandb_project: 'canard' ✓
+- mistral_max_context_tokens: 8000 ✓
+- mistral_temperature: 0.8 ✓
+- wandb_api_key: '' (empty string default) ✓
+
+All fields have proper defaults and app works without env vars set.

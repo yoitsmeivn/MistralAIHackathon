@@ -1,0 +1,23 @@
+Task 4 - Token-aware trim evidence
+Run: 2026-02-28
+
+Script:
+  from app.agent.memory import session_store
+  s = session_store.create('test-trim', 'script-1', 'A' * 500)
+  for i in range(50):
+      session_store.add_message('test-trim', 'user' if i % 2 == 0 else 'assistant', 'B' * 200)
+  session_store.trim_messages('test-trim')
+  assert s.messages[0]['content'] == 'A' * 500, 'System prompt lost'
+  assert len(s.messages) >= 5, 'Too few messages after trim'
+  print(f'OK: {len(s.messages)} messages after trim')
+
+Output:
+  OK: 21 messages after trim
+
+Verification:
+  - System prompt (500 chars) preserved at index 0: PASS
+  - Messages after trim >= 5: PASS (21 messages)
+  - Token budget (8000) respected: PASS
+    * system_prompt tokens: ceil(500/4*1.3) = 163
+    * 20 non-system messages * ceil(200/4*1.3) = 20 * 65 = 1300
+    * total = 1463 < 8000
