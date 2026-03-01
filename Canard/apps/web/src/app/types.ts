@@ -65,6 +65,7 @@ export interface Employee {
   failedTests: number;
   lastTestDate: string;
   isActive: boolean;
+  bossId: string | null;
 }
 
 export interface Campaign {
@@ -223,4 +224,125 @@ export interface EmployeeAnalytics {
   complianceBreakdown: Record<string, number>;
   flagSummary: FlagFrequency[];
   calls: EmployeeCallHistoryItem[];
+}
+
+// ─── Smart Dashboard Widgets ────────────────────────────────────────
+
+export interface WidgetEmployee {
+  id: string;
+  fullName: string;
+  department: string;
+  riskScore: number;
+  failureRate: number;
+  totalTests: number;
+  recentFlags: string[];
+}
+
+export interface WidgetDeptRisk {
+  department: string;
+  avgRisk: number;
+  failureRate: number;
+  employeeCount: number;
+  totalTests: number;
+  failedTests: number;
+}
+
+export interface RiskHotspotWidget {
+  overallRisk: number;
+  riskTrend: string;
+  worstDepartment: string;
+  worstAttackVector: string;
+  topRiskEmployees: WidgetEmployee[];
+  deptBreakdown: WidgetDeptRisk[];
+}
+
+export interface WidgetRecentFailure {
+  callId: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  attackVector: string;
+  riskScore: number;
+  flags: string[];
+  occurredAt: string;
+}
+
+export interface RecentFailuresWidget {
+  failures7d: number;
+  failures30d: number;
+  trend: string;
+  mostCommonFlag: string;
+  recentFailures: WidgetRecentFailure[];
+}
+
+export interface WidgetCampaignDetail {
+  id: string;
+  name: string;
+  attackVector: string;
+  totalCalls: number;
+  completedCalls: number;
+  failureRate: number;
+  avgRisk: number;
+}
+
+export interface CampaignPulseWidget {
+  activeCount: number;
+  completionRate: number;
+  bestPerforming: string;
+  worstPerforming: string;
+  campaigns: WidgetCampaignDetail[];
+}
+
+export interface SmartWidgetsData {
+  riskHotspot: RiskHotspotWidget;
+  recentFailures: RecentFailuresWidget;
+  campaignPulse: CampaignPulseWidget;
+}
+
+// ─── Departmental Failure Pivot ─────────────────────────────────────
+
+export interface DeptFlagPivotCell {
+  department: string;
+  flag: string;
+  count: number;
+  totalDeptCalls: number;
+  percentage: number;
+  affectedEmployees: number;
+  isPositive: boolean;
+}
+
+export interface DeptFlagPivotData {
+  cells: DeptFlagPivotCell[];
+  departments: string[];
+  flags: string[];
+  positiveFlags: string[];
+  departmentTotals: Record<string, number>;
+  flagTotals: Record<string, number>;
+}
+
+// ─── Hierarchical Risk Roll-Up ──────────────────────────────────────
+
+export interface OrgTreeNode {
+  id: string;
+  fullName: string;
+  department: string;
+  jobTitle: string;
+  riskLevel: string;
+  personalRiskScore: number;
+  personalFailureRate: number;
+  personalTotalTests: number;
+  personalFailedTests: number;
+  teamRiskScore: number;
+  teamFailureRate: number;
+  teamTotalTests: number;
+  teamFailedTests: number;
+  depth: number;
+  children: OrgTreeNode[];
+}
+
+export interface HierarchyRiskData {
+  manager: OrgTreeNode;
+  totalDownstreamEmployees: number;
+  highestRiskPath: string[];
+  riskHotspots: OrgTreeNode[];
 }

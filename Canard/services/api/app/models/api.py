@@ -51,6 +51,7 @@ class EmployeeListItem(CamelModel):
     failed_tests: int = 0
     last_test_date: str = ""
     is_active: bool = True
+    boss_id: str | None = None
 
 
 # ── Caller ──
@@ -233,3 +234,127 @@ class EmployeeAnalyticsResponse(CamelModel):
     compliance_breakdown: dict[str, int] = Field(default_factory=dict)
     flag_summary: list[FlagFrequencyResponse] = Field(default_factory=list)
     calls: list[EmployeeCallHistoryItem] = Field(default_factory=list)
+
+
+# ── Smart Dashboard Widgets ──
+
+
+class WidgetEmployee(CamelModel):
+    id: str
+    full_name: str
+    department: str = ""
+    risk_score: float = 0.0
+    failure_rate: float = 0.0
+    total_tests: int = 0
+    recent_flags: list[str] = Field(default_factory=list)
+
+
+class WidgetDeptRisk(CamelModel):
+    department: str
+    avg_risk: float = 0.0
+    failure_rate: float = 0.0
+    employee_count: int = 0
+    total_tests: int = 0
+    failed_tests: int = 0
+
+
+class RiskHotspotWidgetResponse(CamelModel):
+    overall_risk: float = 0.0
+    risk_trend: str = "neutral"
+    worst_department: str = ""
+    worst_attack_vector: str = ""
+    top_risk_employees: list[WidgetEmployee] = Field(default_factory=list)
+    dept_breakdown: list[WidgetDeptRisk] = Field(default_factory=list)
+
+
+class WidgetRecentFailure(CamelModel):
+    call_id: str
+    employee_id: str
+    employee_name: str = ""
+    department: str = ""
+    attack_vector: str = ""
+    risk_score: float = 0.0
+    flags: list[str] = Field(default_factory=list)
+    occurred_at: str = ""
+
+
+class RecentFailuresWidgetResponse(CamelModel):
+    failures_7d: int = 0
+    failures_30d: int = 0
+    trend: str = "neutral"
+    most_common_flag: str = ""
+    recent_failures: list[WidgetRecentFailure] = Field(default_factory=list)
+
+
+class WidgetCampaignDetail(CamelModel):
+    id: str
+    name: str
+    attack_vector: str = ""
+    total_calls: int = 0
+    completed_calls: int = 0
+    failure_rate: float = 0.0
+    avg_risk: float = 0.0
+
+
+class CampaignPulseWidgetResponse(CamelModel):
+    active_count: int = 0
+    completion_rate: float = 0.0
+    best_performing: str = ""
+    worst_performing: str = ""
+    campaigns: list[WidgetCampaignDetail] = Field(default_factory=list)
+
+
+class SmartWidgetsResponse(CamelModel):
+    risk_hotspot: RiskHotspotWidgetResponse = Field(default_factory=RiskHotspotWidgetResponse)
+    recent_failures: RecentFailuresWidgetResponse = Field(default_factory=RecentFailuresWidgetResponse)
+    campaign_pulse: CampaignPulseWidgetResponse = Field(default_factory=CampaignPulseWidgetResponse)
+
+
+# ── Departmental Failure Pivots ──
+
+
+class DeptFlagPivotCell(CamelModel):
+    department: str
+    flag: str
+    count: int = 0
+    total_dept_calls: int = 0
+    percentage: float = 0.0
+    affected_employees: int = 0
+    is_positive: bool = False
+
+
+class DeptFlagPivotResponse(CamelModel):
+    cells: list[DeptFlagPivotCell] = Field(default_factory=list)
+    departments: list[str] = Field(default_factory=list)
+    flags: list[str] = Field(default_factory=list)
+    positive_flags: list[str] = Field(default_factory=list)
+    department_totals: dict[str, int] = Field(default_factory=dict)
+    flag_totals: dict[str, int] = Field(default_factory=dict)
+
+
+# ── Hierarchical Risk Roll-Up ──
+
+
+class OrgTreeNode(CamelModel):
+    id: str
+    full_name: str
+    department: str = ""
+    job_title: str = ""
+    risk_level: str = "unknown"
+    personal_risk_score: float = 0.0
+    personal_failure_rate: float = 0.0
+    personal_total_tests: int = 0
+    personal_failed_tests: int = 0
+    team_risk_score: float = 0.0
+    team_failure_rate: float = 0.0
+    team_total_tests: int = 0
+    team_failed_tests: int = 0
+    depth: int = 0
+    children: list["OrgTreeNode"] = Field(default_factory=list)
+
+
+class HierarchyRiskResponse(CamelModel):
+    manager: OrgTreeNode
+    total_downstream_employees: int = 0
+    highest_risk_path: list[str] = Field(default_factory=list)
+    risk_hotspots: list[OrgTreeNode] = Field(default_factory=list)

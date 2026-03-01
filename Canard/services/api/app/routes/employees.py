@@ -54,6 +54,7 @@ async def api_list_employees(
                 failed_tests=len(failed),
                 last_test_date=last_date,
                 is_active=emp.get("is_active", True),
+                boss_id=emp.get("boss_id"),
             )
         )
     return items
