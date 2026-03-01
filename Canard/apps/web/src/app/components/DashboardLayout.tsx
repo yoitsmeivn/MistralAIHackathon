@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useLocation } from "react-router";
 import {
   LayoutDashboard,
+  BarChart3,
   PhoneCall,
   Users,
   UserCircle,
@@ -27,6 +28,7 @@ import logoImg from "../../../CanardSecurityTransparent.png";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", exact: true },
+  { to: "/analytics", icon: BarChart3, label: "Analytics" },
   { to: "/campaigns", icon: PhoneCall, label: "Campaigns" },
   { to: "/callers", icon: UserCircle, label: "Caller Profiles" },
   { to: "/employees", icon: Users, label: "Employees" },

@@ -6,6 +6,13 @@ import type {
   DashboardStat,
   RiskDistribution,
   CallsOverTime,
+  RiskTrendPoint,
+  DepartmentTrendPoint,
+  RepeatOffender,
+  CampaignEffectivenessData,
+  FlagFrequency,
+  HeatmapCell,
+  EmployeeAnalytics,
 } from "../types";
 
 // Hardcoded org for hackathon demo
@@ -75,6 +82,37 @@ export async function getCalls(): Promise<Call[]> {
 
 export async function getCampaignCalls(campaignId: string): Promise<Call[]> {
   return apiFetch<Call[]>(`/api/calls/?campaign_id=${campaignId}`);
+}
+
+// ─── Analytics ──────────────────────────────────────────────────────
+
+export async function getRiskTrend(days: number = 30): Promise<RiskTrendPoint[]> {
+  return apiFetch<RiskTrendPoint[]>(`/api/analytics/risk-trend?days=${days}`);
+}
+
+export async function getDepartmentTrends(days: number = 30): Promise<DepartmentTrendPoint[]> {
+  return apiFetch<DepartmentTrendPoint[]>(`/api/analytics/department-trends?days=${days}`);
+}
+
+export async function getRepeatOffenders(minFailures: number = 2): Promise<RepeatOffender[]> {
+  return apiFetch<RepeatOffender[]>(`/api/analytics/repeat-offenders?min_failures=${minFailures}`);
+}
+
+export async function getCampaignEffectiveness(): Promise<CampaignEffectivenessData> {
+  return apiFetch<CampaignEffectivenessData>("/api/analytics/campaign-effectiveness");
+}
+
+export async function getFlagFrequency(campaignId?: string): Promise<FlagFrequency[]> {
+  const extra = campaignId ? `&campaign_id=${campaignId}` : "";
+  return apiFetch<FlagFrequency[]>(`/api/analytics/flag-frequency${extra}`);
+}
+
+export async function getAttackHeatmap(): Promise<HeatmapCell[]> {
+  return apiFetch<HeatmapCell[]>("/api/analytics/attack-heatmap");
+}
+
+export async function getEmployeeAnalytics(employeeId: string): Promise<EmployeeAnalytics> {
+  return apiFetch<EmployeeAnalytics>(`/api/analytics/employee-detail/${employeeId}`);
 }
 
 // ─── Derived ────────────────────────────────────────────────────────
