@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random as _random
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -25,6 +26,63 @@ except ImportError:
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+_FILLER_ONLY_PATTERNS = frozenset(
+    {
+        "right.",
+        "right right.",
+        "right right",
+        "right",
+        "yea.",
+        "yea yea.",
+        "yea yea",
+        "yea",
+        "yeah.",
+        "yeah",
+        "uh huh.",
+        "uh huh",
+        "mm-hmm.",
+        "mm-hmm",
+        "mmm-hmm",
+        "okay.",
+        "okay",
+        "ok.",
+        "ok",
+        "sure.",
+        "sure",
+        "got it.",
+        "got it",
+        "i see.",
+        "i see",
+        "alright.",
+        "alright",
+        "sounds good.",
+        "sounds good",
+    }
+)
+
+_FILLER_EXPANSIONS = [
+    "Got it, okay so let me just make sure I have this right -",
+    "Right, that makes sense - so what I'll do is...",
+    "Okay yeah, I hear you - so here's what I need from you:",
+    "Got it - so the thing is, I still need to verify a couple things on my end.",
+    "Yeah totally, I understand - so let me just pull this up real quick.",
+    "Okay so I appreciate that - and I just need one more thing from you to wrap this up.",
+    "Right, and I totally get that - so what I'm gonna do is...",
+]
+
+
+def _expand_filler_response(response: str) -> str:
+    stripped = response.strip().lower().rstrip(".")
+    if (
+        stripped in _FILLER_ONLY_PATTERNS
+        or response.strip().lower() in _FILLER_ONLY_PATTERNS
+    ):
+        expansion = _random.choice(_FILLER_EXPANSIONS)
+        LOGGER.info("Anti-filler: expanded %r -> %r", response.strip(), expansion)
+        return expansion
+    return response
 
 
 @_op
@@ -64,6 +122,7 @@ async def run_turn(call_id: str, user_speech: str) -> str:
         llm_messages[-1]["content"] = user_speech
 
     response = await chat_completion(llm_messages, max_tokens=150)
+    response = _expand_filler_response(response)
 
     session_store.add_message(call_id, "assistant", response)
     session.turn_count += 1
@@ -96,6 +155,7 @@ async def run_turn_streaming(
     buffer = ""
     full_text = ""
     sentence_endings = {". ", "? ", "! ", "\n"}
+    first_sentence = True
 
     async for chunk in chat_completion_stream(llm_messages, max_tokens=150):
         buffer += chunk
@@ -112,10 +172,15 @@ async def run_turn_streaming(
             sentence = buffer[:found].strip()
             buffer = buffer[found:]
             if sentence:
+                if first_sentence:
+                    sentence = _expand_filler_response(sentence)
+                    first_sentence = False
                 yield sentence
 
     remaining = buffer.strip()
     if remaining:
+        if first_sentence:
+            remaining = _expand_filler_response(remaining)
         yield remaining
 
     if full_text.strip():

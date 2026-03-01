@@ -289,6 +289,11 @@ async def twilio_status(
             "ended_at": datetime.now(timezone.utc).isoformat(),
             "recording_url": RecordingUrl or None,
         }
+        recording_transcript = (
+            session.recording_transcript
+            if session and getattr(session, "recording_transcript", None)
+            else ""
+        )
 
         # Duration (if provided by Twilio)
         if CallDuration:
@@ -308,14 +313,22 @@ async def twilio_status(
         elif session and getattr(session, "turns", None):
             transcript_lines: list[str] = []
             for t in session.turns:
-                label = "Agent" if getattr(t.role, "value", t.role) == "agent" else "User"
+                label = (
+                    "Agent" if getattr(t.role, "value", t.role) == "agent" else "User"
+                )
                 transcript_lines.append(f"{label}: {t.text}")
             update_data["transcript"] = "\n".join(transcript_lines)
 
         _update_call_safe(call_id, update_data)
 
         # Fire post-call evaluation in the background
-        asyncio.create_task(_run_evaluation_safe(call_id, update_data.get("transcript", "")))
+        transcript_for_eval = update_data.get("transcript")
+        asyncio.create_task(
+            _run_evaluation_safe(
+                call_id,
+                transcript_for_eval if isinstance(transcript_for_eval, str) else None,
+            )
+        )
 
         # Clean up in-memory session
         remove_session(call_id)
@@ -732,7 +745,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     LOGGER.debug("Twilio mark received: %s", mark_name)
 
                     async def _echo_guard(mn: str = mark_name) -> None:
-                        await asyncio.sleep(0.4)
+                        await asyncio.sleep(0.15)
                         session.state_transition(AgentState.LISTENING)
                         await event_bus.emit(
                             CallEvent(
@@ -812,8 +825,10 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 continue
 
             elapsed = time.monotonic() - last_speech_time[0]
+            nudge_threshold = cfg.silence_nudge_ms / 1000.0
+            goodbye_threshold = cfg.silence_goodbye_ms / 1000.0
 
-            if elapsed >= 20.0:
+            if elapsed >= goodbye_threshold:
                 goodbye_phrases = [
                     "Well, seems like you're busy. I'll try again later!",
                     "Hello? Okay, I'll let you go. Have a good one!",
@@ -878,7 +893,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 break
 
             elif (
-                elapsed >= 8.0
+                elapsed >= nudge_threshold
                 and not silence_state["nudge_sent"]
                 and (time.monotonic() - last_nudge_time[0]) >= 15.0
             ):
@@ -888,6 +903,20 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     "Sorry, did I lose you?",
                 ]
                 nudge_text = random.choice(nudge_phrases)
+                try:
+                    from app.agent.memory import session_store as _ss
+
+                    _agent_sess = _ss.get(call_id)
+                    if _agent_sess is not None:
+                        _ss.add_message(
+                            call_id,
+                            "user",
+                            "[System: The user has been silent. Continue your narrative naturally, add more detail, or ask a prompting question. Do not wait.]",
+                        )
+                except Exception:
+                    LOGGER.debug(
+                        "Failed to inject user_silent message for call_id=%s", call_id
+                    )
                 try:
                     nudge_audio = await text_to_speech(
                         sanitize_for_tts(nudge_text),
@@ -1000,6 +1029,61 @@ async def twilio_stream(websocket: WebSocket) -> None:
                                 {"new_state": session.agent_state.value},
                             )
                         )
+
+                BRIDGE_PHRASES = [
+                    "Yeah so...",
+                    "Right, so the thing is...",
+                    "So basically...",
+                    "Okay so...",
+                    "Yeah and the thing is...",
+                ]
+                bridge_text = random.choice(BRIDGE_PHRASES)
+                try:
+                    bridge_audio = await text_to_speech(
+                        sanitize_for_tts(bridge_text),
+                        voice_id=_voice_id(),
+                        call_id=call_id,
+                    )
+                    if (
+                        bridge_audio
+                        and stream_sid
+                        and my_generation_id == generation_counter[0]
+                    ):
+                        session.state_transition(AgentState.SPEAKING)
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id,
+                                "state_transition",
+                                {"new_state": session.agent_state.value},
+                            )
+                        )
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "event": "media",
+                                    "streamSid": stream_sid,
+                                    "media": {
+                                        "payload": base64.b64encode(
+                                            bridge_audio
+                                        ).decode()
+                                    },
+                                }
+                            )
+                        )
+                        session.audio_send_time = time.monotonic()
+                        session.audio_send_bytes += len(bridge_audio)
+                        session.barge_in_cooldown_until = time.monotonic() + 0.3
+                        session.audio_bytes_sent_total += len(bridge_audio)
+                        await event_bus.emit(
+                            CallEvent(
+                                call_id, "bridge_phrase_sent", {"text": bridge_text}
+                            )
+                        )
+                except Exception:
+                    LOGGER.debug(
+                        "Bridge phrase injection failed for call_id=%s, continuing",
+                        call_id,
+                    )
 
                 LOGGER.info(
                     "[call=%s turn=%d] User: %r",
@@ -1537,9 +1621,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _run_evaluation_safe(
-    call_id: str, recording_transcript: str | None
-) -> None:
+async def _run_evaluation_safe(call_id: str, recording_transcript: str | None) -> None:
     """Run post-call evaluation, catching all exceptions."""
     try:
         from app.services.evaluation import evaluate_call
