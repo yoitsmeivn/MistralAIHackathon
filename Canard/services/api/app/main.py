@@ -2,10 +2,19 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import logging
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+try:
+    import weave as _weave
+    _HAS_WEAVE = True
+except ImportError:
+    _HAS_WEAVE = False
+
+LOGGER = logging.getLogger(__name__)
 
 from app.config import settings
 from app.routes.analytics import router as analytics_router
@@ -22,6 +31,12 @@ from app.twilio_voice.routes import router as twilio_router
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    if _HAS_WEAVE:
+        try:
+            _weave.init(settings.wandb_project)
+            LOGGER.info("W&B Weave initialized for project: %s", settings.wandb_project)
+        except Exception as exc:
+            LOGGER.warning("W&B Weave init failed (tracing disabled): %s", exc)
     yield
 
 

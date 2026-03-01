@@ -8,15 +8,24 @@ from app.agent.memory import session_store
 from app.agent.redaction import redact_pii
 from app.integrations.mistral import chat_completion
 
+try:
+    import weave as _weave
+    _op = _weave.op
+except ImportError:
+    def _op(fn):  # type: ignore[misc]
+        return fn
+
 LOGGER = logging.getLogger(__name__)
 
 
+@_op
 async def start_session(call_id: str, script_id: str, system_prompt: str) -> None:
     session_store.create(
         call_id=call_id, script_id=script_id, system_prompt=system_prompt
     )
 
 
+@_op
 async def end_session(call_id: str) -> list[dict]:
     session = session_store.get(call_id)
     if session is None:
@@ -26,6 +35,7 @@ async def end_session(call_id: str) -> list[dict]:
     return history
 
 
+@_op
 async def run_turn(call_id: str, user_speech: str) -> str:
     session = session_store.get(call_id)
     if session is None:

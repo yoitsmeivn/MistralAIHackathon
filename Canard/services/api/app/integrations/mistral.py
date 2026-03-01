@@ -11,6 +11,13 @@ from mistralai import Mistral, SDKError
 
 from app.config import settings
 
+try:
+    import weave as _weave
+    _op = _weave.op
+except ImportError:
+    def _op(fn):  # type: ignore[misc]
+        return fn
+
 _client_instance: Mistral | None = None
 
 _RETRYABLE_STATUS_CODES = {429, 500, 503}
@@ -161,6 +168,7 @@ def _extract_json_object(content: str) -> dict:
     return parsed
 
 
+@_op
 async def chat_completion(
     messages: list[dict],
     model: str | None = None,
@@ -178,6 +186,7 @@ async def chat_completion(
     return _extract_response_text(response)
 
 
+@_op
 async def chat_completion_stream(
     messages: list[dict],
     model: str | None = None,
@@ -207,6 +216,7 @@ async def chat_completion_stream(
             yield chunk
 
 
+@_op
 async def analyze_transcript(transcript: str, scenario_description: str) -> dict:
     analysis_prompt = (
         "You are a security-awareness call evaluator. Analyze the transcript and return "
