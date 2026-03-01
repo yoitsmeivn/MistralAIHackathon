@@ -34,6 +34,7 @@ from app.integrations.elevenlabs import (
     text_to_speech_streaming,
 )
 from app.streaming.event_bus import CallEvent, event_bus
+from app.services.email import send_test_results_email
 from app.validation.scorer import EmployeeProfile, score_disclosure
 from app.twilio_voice import twiml
 from app.twilio_voice.session import (
@@ -1634,12 +1635,58 @@ async def _run_evaluation_safe(call_id: str, recording_transcript: str | None) -
                 call_id,
                 result.get("risk_score"),
             )
+            await _send_audit_email_safe(call_id, result)
         else:
             LOGGER.info("Post-call evaluation returned no result for call %s", call_id)
     except Exception:
         LOGGER.warning(
             "Post-call evaluation failed for call %s", call_id, exc_info=True
         )
+
+
+async def _send_audit_email_safe(call_id: str, eval_result: dict) -> None:
+    """Send audit email after evaluation — best-effort, never raises."""
+    try:
+        from app.db import queries
+
+        call = queries.get_call(call_id)
+        if not call:
+            LOGGER.warning("Audit email skipped — call %s not found in DB", call_id)
+            return
+
+        employee = queries.get_employee(call.get("employee_id", ""))
+        if not employee:
+            LOGGER.warning("Audit email skipped — employee not found for call %s", call_id)
+            return
+
+        to_email = employee.get("email")
+        if not to_email:
+            LOGGER.warning("Audit email skipped — no email for employee (call %s)", call_id)
+            return
+
+        campaign = queries.get_campaign(call["campaign_id"]) if call.get("campaign_id") else None
+
+        flags = call.get("flags") or []
+        if isinstance(flags, str):
+            flags = [flags]
+
+        email_id = send_test_results_email(
+            to_email=to_email,
+            employee_name=employee.get("full_name", ""),
+            risk_score=call.get("risk_score") or 0,
+            compliance=call.get("employee_compliance") or "",
+            ai_summary=call.get("ai_summary") or "",
+            flags=flags,
+            transcript=call.get("transcript") or "",
+            campaign_name=campaign.get("name", "") if campaign else "",
+        )
+
+        if email_id:
+            LOGGER.info("Audit email sent for call %s to %s (id=%s)", call_id, to_email, email_id)
+        else:
+            LOGGER.warning("Audit email returned no id for call %s", call_id)
+    except Exception:
+        LOGGER.warning("Audit email failed for call %s", call_id, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
