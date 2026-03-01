@@ -67,6 +67,7 @@ class CallerListItem(CamelModel):
     is_active: bool = True
     total_calls: int = 0
     avg_success_rate: int = 0
+    created_at: str = ""
 
 
 # ── Script ──

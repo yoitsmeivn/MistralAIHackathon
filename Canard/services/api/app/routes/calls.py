@@ -7,6 +7,7 @@ from app.auth.middleware import OptionalUser
 from app.db import queries
 from app.models.api import CallEnriched, StartCallRequest, StartCallResponse
 from app.services.calls import start_call as svc_start_call
+from app.services.email import send_test_results_email
 
 router = APIRouter(prefix="/api/calls", tags=["calls"])
 
@@ -86,13 +87,57 @@ async def api_list_calls(
                 duration=_format_duration(c.get("duration_seconds")),
                 duration_seconds=c.get("duration_seconds"),
                 risk_score=c.get("risk_score") or 0,
-                employee_compliance=c.get("employee_compliance", ""),
-                transcript=c.get("transcript", "") or "",
+                employee_compliance=c.get("employee_compliance") or "",
+                transcript=c.get("transcript") or "",
                 flags=flags,
                 ai_summary=c.get("ai_summary", "") or "",
             )
         )
     return items
+
+
+@router.post("/{call_id}/send-results")
+async def api_send_results(
+    call_id: str,
+    user: OptionalUser,
+    override_email: str | None = Query(None),
+) -> dict:
+    """Send post-call test results email to the employee."""
+    call = queries.get_call(call_id)
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+    if call.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Call is not completed yet")
+
+    employee = queries.get_employee(call.get("employee_id", ""))
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    to_email = override_email or employee.get("email")
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Employee has no email address")
+
+    campaign = queries.get_campaign(call["campaign_id"]) if call.get("campaign_id") else None
+
+    flags = call.get("flags") or []
+    if isinstance(flags, str):
+        flags = [flags]
+
+    email_id = send_test_results_email(
+        to_email=to_email,
+        employee_name=employee.get("full_name", ""),
+        risk_score=call.get("risk_score") or 0,
+        compliance=call.get("employee_compliance") or "",
+        ai_summary=call.get("ai_summary") or "",
+        flags=flags,
+        transcript=call.get("transcript") or "",
+        campaign_name=campaign.get("name", "") if campaign else "",
+    )
+
+    if not email_id:
+        raise HTTPException(status_code=500, detail="Failed to send email")
+
+    return {"status": "sent", "email_id": email_id, "to": to_email}
 
 
 @router.get("/{call_id}", response_model=CallEnriched)
@@ -103,8 +148,8 @@ async def api_call_detail(call_id: str) -> CallEnriched:
 
     # Resolve names
     emp = queries.get_employee(c.get("employee_id", ""))
-    caller = queries.get_caller(c.get("caller_id", ""))
-    campaign = queries.get_campaign(c.get("campaign_id", ""))
+    caller = queries.get_caller(c.get("caller_id", "")) if c.get("caller_id") else None
+    campaign = queries.get_campaign(c.get("campaign_id", "")) if c.get("campaign_id") else None
 
     flags = c.get("flags") or []
     if isinstance(flags, str):
@@ -120,8 +165,8 @@ async def api_call_detail(call_id: str) -> CallEnriched:
         duration=_format_duration(c.get("duration_seconds")),
         duration_seconds=c.get("duration_seconds"),
         risk_score=c.get("risk_score") or 0,
-        employee_compliance=c.get("employee_compliance", ""),
-        transcript=c.get("transcript", "") or "",
+        employee_compliance=c.get("employee_compliance") or "",
+        transcript=c.get("transcript") or "",
         flags=flags,
-        ai_summary=c.get("ai_summary", "") or "",
+        ai_summary=c.get("ai_summary") or "",
     )

@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     supabase_anon_public_key: str = ""
 
+    # Resend (transactional email)
+    resend_api_key: str = ""
+    resend_from_email: str = "Canard Security <onboarding@resend.dev>"
+
     # App
     app_url: str = "http://localhost:3000"
 

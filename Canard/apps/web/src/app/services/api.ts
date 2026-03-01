@@ -88,6 +88,7 @@ export async function createCampaign(data: {
   name: string;
   description?: string;
   attack_vector?: string;
+  scheduled_at?: string;
 }): Promise<Record<string, unknown>> {
   return apiFetch<Record<string, unknown>>("/api/campaigns/", {
     method: "POST",
@@ -266,6 +267,12 @@ export async function getCalls(): Promise<Call[]> {
 
 export async function getCampaignCalls(campaignId: string): Promise<Call[]> {
   return apiFetch<Call[]>(`/api/calls/?campaign_id=${campaignId}`);
+}
+
+export async function sendCallResults(
+  callId: string
+): Promise<{ status: string; email_id: string; to: string }> {
+  return apiFetch(`/api/calls/${callId}/send-results`, { method: "POST" });
 }
 
 // ─── User Management ─────────────────────────────────────────────────

@@ -17,6 +17,7 @@ def create_campaign(
     created_by: str | None = None,
     description: str | None = None,
     attack_vector: str | None = None,
+    scheduled_at: str | None = None,
 ) -> dict:
     data: dict[str, str] = {"name": name, "org_id": org_id}
     if created_by:
@@ -25,6 +26,8 @@ def create_campaign(
         data["description"] = description
     if attack_vector:
         data["attack_vector"] = attack_vector
+    if scheduled_at:
+        data["scheduled_at"] = scheduled_at
     return queries.create_campaign(data)
 
 

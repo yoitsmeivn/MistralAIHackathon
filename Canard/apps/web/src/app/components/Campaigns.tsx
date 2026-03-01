@@ -153,6 +153,7 @@ export function Campaigns() {
         name: formData.name,
         description: formData.description || undefined,
         attack_vector: formData.attackVector || undefined,
+        scheduled_at: formData.scheduledAt ? new Date(formData.scheduledAt).toISOString() : undefined,
       });
       setShowModal(false);
       setFormData({ name: "", description: "", attackVector: "", scheduledAt: "" });
@@ -266,14 +267,34 @@ export function Campaigns() {
                   </Badge>
                 </div>
 
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-2 mb-4 flex-wrap">
                   <Badge variant="outline" className="text-xs font-normal">
                     {campaign.attackVector}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    · Scheduled{" "}
-                    {new Date(campaign.scheduledAt).toLocaleDateString()}
-                  </span>
+                  {campaign.scheduledAt && (
+                    <span className="text-xs text-muted-foreground">
+                      · Scheduled{" "}
+                      {new Date(campaign.scheduledAt).toLocaleDateString()}
+                    </span>
+                  )}
+                  {campaign.startedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      · Started{" "}
+                      {new Date(campaign.startedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                  {campaign.completedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      · Completed{" "}
+                      {new Date(campaign.completedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                  {!campaign.scheduledAt && !campaign.startedAt && !campaign.completedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      · Created{" "}
+                      {new Date(campaign.createdAt).toLocaleDateString()}
+                    </span>
+                  )}
                 </div>
 
                 {campaign.status !== "draft" && (
@@ -286,7 +307,9 @@ export function Campaigns() {
                     </div>
                     <Progress
                       value={
-                        (campaign.completedCalls / campaign.totalCalls) * 100
+                        campaign.totalCalls > 0
+                          ? (campaign.completedCalls / campaign.totalCalls) * 100
+                          : 0
                       }
                       className="h-1.5"
                     />
