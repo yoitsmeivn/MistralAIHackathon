@@ -12,7 +12,26 @@ if (!supabaseConfigured) {
   );
 }
 
-// Create a real client when configured, or a dummy placeholder so imports don't crash
+const dummySupabase = new Proxy({}, {
+  get(_target, prop) {
+    if (prop === "auth") {
+      return new Proxy({}, {
+        get(_authTarget, authProp) {
+          return () => {
+            if (authProp === "getSession") return Promise.resolve({ data: { session: null }, error: null });
+            if (authProp === "onAuthStateChange") return { data: { subscription: { unsubscribe: () => {} } } };
+            throw new Error("Cannot connect to Supabase: Configuration missing in apps/web/.env");
+          };
+        }
+      });
+    }
+    return () => {
+      throw new Error("Cannot connect to Supabase: Configuration missing.");
+    };
+  }
+}) as unknown as SupabaseClient;
+
+// Create a real client when configured, or a dummy proxy so imports/clicks don't hard crash
 export const supabase: SupabaseClient = supabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!)
-  : (null as unknown as SupabaseClient);
+  : dummySupabase;
