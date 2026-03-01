@@ -49,6 +49,8 @@ _BARGE_IN_FRAMES = (
     5  # 5 consecutive loud frames (~100ms) required — filters transient sounds
 )
 
+_BACKCHANNEL_WORDS = frozenset({"uh huh", "mm", "hmm", "mhm", "okay", "uh", "ah"})
+
 
 def _compute_mulaw_energy(payload: bytes) -> float:
     """Compute RMS energy of µ-law encoded audio. Works on Python 3.13+ (no audioop)."""
@@ -916,6 +918,38 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 tts_first_chunk_sent = False
                 session.audio_send_bytes = 0
 
+                # Max turns enforcement
+                agent_session = session_store.get(call_id)
+                if agent_session is not None and agent_session.turn_count >= 10:
+                    LOGGER.info("Max turns reached for call_id=%s, sending goodbye", call_id)
+                    goodbye = "Alright, I think we've covered everything. Thanks for your time, take care!"
+                    try:
+                        goodbye_audio = await text_to_speech(sanitize_for_tts(goodbye), call_id=call_id)
+                        if stream_sid and goodbye_audio:
+                            session.state_transition(AgentState.SPEAKING)
+                            await event_bus.emit(CallEvent(call_id, "state_transition", {"new_state": session.agent_state.value}))
+                            await websocket.send_text(json.dumps({
+                                "event": "media", "streamSid": stream_sid,
+                                "media": {"payload": base64.b64encode(goodbye_audio).decode()},
+                            }))
+                    except Exception:
+                        LOGGER.warning("Failed to send goodbye TTS for call_id=%s", call_id)
+                    return
+
+                async def _tts_with_retry(text):
+                    """Stream TTS chunks with single-retry fallback."""
+                    try:
+                        async for chunk in text_to_speech_streaming(text, call_id=call_id):
+                            yield chunk
+                    except Exception:
+                        LOGGER.warning("TTS streaming failed for sentence, retrying: call_id=%s", call_id)
+                        try:
+                            fallback_audio = await text_to_speech(text, call_id=call_id)
+                            if fallback_audio:
+                                yield fallback_audio
+                        except Exception:
+                            LOGGER.warning("TTS retry also failed for call_id=%s, skipping sentence", call_id)
+
                 try:
                     async for sentence in run_turn_streaming(call_id, full_transcript):
                         if my_generation_id != generation_counter[0]:
@@ -933,9 +967,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
 
                         all_sentences.append(sentence)
                         t0_tts = time.monotonic()
-                        async for chunk in text_to_speech_streaming(
-                            sanitize_for_tts(sentence), call_id=call_id
-                        ):
+                        async for chunk in _tts_with_retry(sanitize_for_tts(sentence)):
                             if my_generation_id != generation_counter[0]:
                                 break
                             if not isinstance(chunk, bytes) or not chunk:
@@ -1114,6 +1146,19 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     )
 
                 if not transcript.strip():
+                    continue
+
+                # Short transcript filter
+                if len(transcript.strip()) < 2:
+                    last_speech_time[0] = time.monotonic()
+                    silence_state["nudge_sent"] = False
+                    continue
+
+                # Backchannel detection — reset timer but don't process
+                if transcript.strip().lower() in _BACKCHANNEL_WORDS:
+                    last_speech_time[0] = time.monotonic()
+                    silence_state["nudge_sent"] = False
+                    LOGGER.debug("Backchannel detected, skipping processing: %r", transcript.strip())
                     continue
 
                 await event_bus.emit(CallEvent(call_id, "stt_commit", {
