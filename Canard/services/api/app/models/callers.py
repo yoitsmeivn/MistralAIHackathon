@@ -14,6 +14,7 @@ class Caller(BaseModel):
     persona_name: str
     persona_role: str | None = None
     persona_company: str | None = None
+    persona_prompt: str = ""
     voice_profile: dict[str, Any] = Field(default_factory=dict)
     phone_number: str | None = None
     is_active: bool = True

@@ -62,6 +62,7 @@ const emptyFormData = {
   personaCompany: "",
   phoneNumber: "",
   voiceId: "",
+  personaPrompt: "",
 };
 
 export function Callers() {
@@ -100,6 +101,7 @@ export function Callers() {
       personaCompany: caller.personaCompany,
       phoneNumber: caller.phoneNumber,
       voiceId: caller.voiceProfile?.voice_id || "",
+      personaPrompt: caller.personaPrompt || "",
     });
     setShowModal(true);
   };
@@ -117,6 +119,7 @@ export function Callers() {
           persona_company: formData.personaCompany || undefined,
           phone_number: formData.phoneNumber || undefined,
           voice_profile: voiceProfile || {},
+          persona_prompt: formData.personaPrompt || undefined,
         });
       } else {
         await createCaller({
@@ -125,6 +128,7 @@ export function Callers() {
           persona_company: formData.personaCompany || undefined,
           phone_number: formData.phoneNumber || undefined,
           voice_profile: voiceProfile,
+          persona_prompt: formData.personaPrompt || undefined,
         });
       }
       setShowModal(false);
@@ -353,6 +357,18 @@ export function Callers() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Character & Speaking Style
+              </label>
+              <textarea
+                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
+                value={formData.personaPrompt}
+                onChange={(e) => setFormData({ ...formData, personaPrompt: e.target.value })}
+                placeholder="Describe how this persona speaks, their tone, pace, and characteristic phrases..."
+              />
             </div>
           </div>
 

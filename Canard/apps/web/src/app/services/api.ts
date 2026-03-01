@@ -149,6 +149,7 @@ export async function createCaller(data: {
   persona_company?: string;
   phone_number?: string;
   voice_profile?: { voice_id?: string; voice_name?: string };
+  persona_prompt?: string;
 }): Promise<Record<string, unknown>> {
   return apiFetch<Record<string, unknown>>("/api/callers/", {
     method: "POST",

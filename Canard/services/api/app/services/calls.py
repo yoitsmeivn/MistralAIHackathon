@@ -8,6 +8,7 @@ from app.agent import end_session
 from app.config import settings
 from app.db import queries
 from app.services.analysis import run_post_call_analysis
+from app.twilio_voice.session import TurnRole, get_session
 from app.twilio_voice.client import make_outbound_call
 
 LOGGER = logging.getLogger(__name__)
@@ -105,6 +106,17 @@ async def handle_call_completed(
     }
     if recording_url:
         update_data["recording_url"] = recording_url
+    if recording_transcript:
+        update_data["transcript"] = recording_transcript
+    else:
+        session = get_session(call_id)
+        if session and session.turns:
+            transcript_lines = []
+            for turn in session.turns:
+                role_label = "AGENT" if turn.role == TurnRole.AGENT else "USER"
+                line_text = turn.redacted_text or turn.text
+                transcript_lines.append(f"{role_label}: {line_text}")
+            update_data["transcript"] = "\n".join(transcript_lines)
 
     queries.update_call(call_id, update_data)
     await end_session(call_id)
@@ -113,4 +125,3 @@ async def handle_call_completed(
         await run_post_call_analysis(call_id, recording_transcript=recording_transcript)
     except Exception:
         LOGGER.exception("Post-call analysis failed for call %s", call_id)
-

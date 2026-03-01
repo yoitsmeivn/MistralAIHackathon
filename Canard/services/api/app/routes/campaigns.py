@@ -20,7 +20,9 @@ class CreateCampaignRequest(BaseModel):
     scheduled_at: str | None = None
 
 
-def _enrich_campaigns(campaigns: list[dict], all_calls: list[dict]) -> list[CampaignListItem]:
+def _enrich_campaigns(
+    campaigns: list[dict], all_calls: list[dict]
+) -> list[CampaignListItem]:
     """Add computed totalCalls, completedCalls, avgRiskScore from calls data."""
     camp_calls: dict[str, list[dict]] = {}
     for c in all_calls:
@@ -97,7 +99,7 @@ class UpdateCampaignRequest(BaseModel):
 
 @router.patch("/{campaign_id}")
 async def api_update_campaign(
-    campaign_id: str, req: UpdateCampaignRequest, user: OptionalUser
+    campaign_id: str, req: UpdateCampaignRequest, _user: OptionalUser
 ) -> dict:
     campaign = queries.get_campaign(campaign_id)
     if not campaign:
@@ -111,7 +113,7 @@ async def api_update_campaign(
 
 
 @router.delete("/{campaign_id}")
-async def api_delete_campaign(campaign_id: str, user: OptionalUser) -> dict:
+async def api_delete_campaign(campaign_id: str, _user: OptionalUser) -> dict:
     campaign = queries.get_campaign(campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -153,7 +155,7 @@ async def api_get_campaign_scripts(campaign_id: str) -> list[ScriptListItem]:
 
 @router.post("/{campaign_id}/launch")
 async def api_launch_campaign(
-    campaign_id: str, req: LaunchCampaignRequest, user: OptionalUser
+    campaign_id: str, req: LaunchCampaignRequest, _user: OptionalUser
 ) -> dict:
     from app.services.campaigns import launch_campaign
 
@@ -176,6 +178,6 @@ async def api_get_campaign(campaign_id: str) -> CampaignListItem:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     org_id = campaign.get("org_id", "")
-    all_calls = queries.list_calls(org_id=org_id, campaign_id=campaign_id, limit=10000)
+    all_calls = queries.list_calls(org_id=org_id, campaign_id=campaign_id, limit=500)
     enriched = _enrich_campaigns([campaign], all_calls)
     return enriched[0]
