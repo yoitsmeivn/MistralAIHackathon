@@ -1,13 +1,16 @@
-import { Outlet, NavLink, useLocation } from "react-router";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
+import { useState } from "react";
 import {
   LayoutDashboard,
   PhoneCall,
   Users,
   UserCircle,
-  Phone,
   Activity,
   ChevronRight,
   X,
+  LogOut,
+  Settings,
+  Trash2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -23,14 +26,25 @@ import {
   useSidebar,
 } from "./ui/sidebar";
 import { Separator } from "./ui/separator";
+import { useAuth } from "../contexts/AuthContext";
+import { deleteAccount } from "../services/api";
 import logoImg from "../../../CanardSecurityTransparent.png";
 
-const navItems = [
+interface NavItem {
+  to: string;
+  icon: typeof LayoutDashboard;
+  label: string;
+  exact?: boolean;
+  adminOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", exact: true },
   { to: "/campaigns", icon: PhoneCall, label: "Campaigns" },
   { to: "/callers", icon: UserCircle, label: "Caller Profiles" },
   { to: "/employees", icon: Users, label: "Employees" },
   { to: "/monitoring", icon: Activity, label: "Call Monitoring" },
+  { to: "/settings/users", icon: Settings, label: "Team", adminOnly: true },
 ];
 
 function getBreadcrumb(pathname: string) {
@@ -70,13 +84,16 @@ function SidebarCloseButton() {
 function SidebarNav() {
   const { pathname } = useLocation();
   const { state } = useSidebar();
+  const { appUser } = useAuth();
+  const isAdmin = appUser?.role === "admin";
+  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <SidebarContent className="px-3 py-4">
       <SidebarMenu>
         <AnimatePresence>
           {state === "expanded" &&
-            navItems.map((item, i) => {
+            visibleItems.map((item, i) => {
               const isActive = item.exact
                 ? pathname === item.to
                 : pathname.startsWith(item.to);
@@ -121,6 +138,30 @@ function SidebarNav() {
 export function DashboardLayout() {
   const { pathname } = useLocation();
   const breadcrumb = getBreadcrumb(pathname);
+  const { appUser, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleSignOut() {
+    await signOut();
+    navigate("/login", { replace: true });
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteAccount();
+      await signOut();
+      navigate("/login", { replace: true });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete account");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -166,6 +207,33 @@ export function DashboardLayout() {
               </span>
             ))}
           </nav>
+
+          {/* User info + sign out */}
+          <div className="ml-auto flex items-center gap-3">
+            {appUser && (
+              <span className="text-sm text-muted-foreground">
+                {appUser.full_name}
+                {appUser.org_name && (
+                  <span className="text-xs ml-1 opacity-60">({appUser.org_name})</span>
+                )}
+              </span>
+            )}
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+              title="Delete account"
+            >
+              <Trash2 className="size-4" />
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
+          </div>
         </header>
 
         {/* Main Content */}
@@ -173,6 +241,41 @@ export function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Delete account confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl border p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold mb-2">Delete Account</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Are you sure you want to delete your account? This action cannot be undone.
+            </p>
+            {deleteError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteError("");
+                }}
+                className="rounded-md px-4 py-2 text-sm border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="rounded-md px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Delete Account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </SidebarProvider>
   );
 }

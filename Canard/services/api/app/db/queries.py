@@ -50,6 +50,21 @@ def get_organization_by_slug(slug: str) -> dict | None:
     return _first_or_none(result)
 
 
+def get_organization_by_domain(domain: str) -> dict | None:
+    result = _execute(
+        get_supabase().table("organizations").select("*").eq("domain", domain).limit(1),
+        "get_organization_by_domain",
+    )
+    return _first_or_none(result)
+
+
+def delete_organization(id: str) -> None:
+    _execute(
+        get_supabase().table("organizations").delete().eq("id", id),
+        "delete_organization",
+    )
+
+
 # ── Users ──
 
 
@@ -73,6 +88,22 @@ def get_user_by_email(email: str) -> dict | None:
         "get_user_by_email",
     )
     return _first_or_none(result)
+
+
+def update_user(id: str, data: dict) -> dict:
+    result = _execute(
+        get_supabase().table("users").update(data).eq("id", id),
+        "update_user",
+    )
+    row = _first_or_none(result)
+    return row or {}
+
+
+def delete_user(id: str) -> None:
+    _execute(
+        get_supabase().table("users").delete().eq("id", id),
+        "delete_user",
+    )
 
 
 def list_users(org_id: str, active_only: bool = True) -> list[dict]:
