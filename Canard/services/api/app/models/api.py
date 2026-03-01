@@ -1,12 +1,8 @@
 # pyright: basic
 from __future__ import annotations
 
-from datetime import datetime
-
 from pydantic import BaseModel, Field
 from pydantic.alias_generators import to_camel
-
-from app.models.calls import Call
 
 
 class CamelModel(BaseModel):
@@ -62,6 +58,7 @@ class CallerListItem(CamelModel):
     persona_name: str = ""
     persona_role: str = ""
     persona_company: str = ""
+    persona_prompt: str = ""
     phone_number: str = ""
     voice_profile: dict = Field(default_factory=dict)
     is_active: bool = True
@@ -323,9 +320,15 @@ class CampaignPulseWidgetResponse(CamelModel):
 
 
 class SmartWidgetsResponse(CamelModel):
-    risk_hotspot: RiskHotspotWidgetResponse = Field(default_factory=RiskHotspotWidgetResponse)
-    recent_failures: RecentFailuresWidgetResponse = Field(default_factory=RecentFailuresWidgetResponse)
-    campaign_pulse: CampaignPulseWidgetResponse = Field(default_factory=CampaignPulseWidgetResponse)
+    risk_hotspot: RiskHotspotWidgetResponse = Field(
+        default_factory=RiskHotspotWidgetResponse
+    )
+    recent_failures: RecentFailuresWidgetResponse = Field(
+        default_factory=RecentFailuresWidgetResponse
+    )
+    campaign_pulse: CampaignPulseWidgetResponse = Field(
+        default_factory=CampaignPulseWidgetResponse
+    )
 
 
 # ── Departmental Failure Pivots ──

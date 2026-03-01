@@ -158,14 +158,28 @@ export function CampaignDetail() {
     );
   }, [id]);
 
+  const refreshCampaignStatus = useCallback(() => {
+    if (!id) return;
+    getCampaign(id).then((camp) => {
+      setCampaign(camp || null);
+    });
+  }, [id]);
+
   useEffect(() => {
     loadCampaignData();
   }, [loadCampaignData]);
 
+  useEffect(() => {
+    Promise.all([getCallers(), getEmployees()]).then(([c, e]) => {
+      setCallers(c.filter((x) => x.isActive));
+      setEmployees(e.filter((x) => x.isActive));
+    });
+  }, []);
+
   // Poll when campaign is running
   useEffect(() => {
     if (campaign?.status === "running") {
-      pollRef.current = setInterval(loadCampaignData, 10000);
+      pollRef.current = setInterval(refreshCampaignStatus, 15000);
     } else if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -173,7 +187,7 @@ export function CampaignDetail() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [campaign?.status, loadCampaignData]);
+  }, [campaign?.status, refreshCampaignStatus]);
 
   // Department list derived from employees
   const departments = useMemo(() => {
@@ -191,9 +205,11 @@ export function CampaignDetail() {
 
   const handleOpenLaunchDialog = async () => {
     setShowLaunchDialog(true);
-    const [c, e] = await Promise.all([getCallers(), getEmployees()]);
-    setCallers(c.filter((x) => x.isActive));
-    setEmployees(e.filter((x) => x.isActive));
+    if (callers.length === 0 || employees.length === 0) {
+      const [c, e] = await Promise.all([getCallers(), getEmployees()]);
+      setCallers(c.filter((x) => x.isActive));
+      setEmployees(e.filter((x) => x.isActive));
+    }
   };
 
   const handleLaunch = async () => {
@@ -641,7 +657,7 @@ export function CampaignDetail() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">Name</label>
+              <p className="block text-xs text-muted-foreground mb-1.5">Name</p>
               <Input
                 value={campaignForm.name}
                 onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
@@ -649,7 +665,7 @@ export function CampaignDetail() {
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">Description</label>
+              <p className="block text-xs text-muted-foreground mb-1.5">Description</p>
               <textarea
                 className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 rows={3}
@@ -660,7 +676,7 @@ export function CampaignDetail() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">Attack Vector</label>
+                <p className="block text-xs text-muted-foreground mb-1.5">Attack Vector</p>
                 <Select
                   value={campaignForm.attack_vector}
                   onValueChange={(v) => setCampaignForm({ ...campaignForm, attack_vector: v })}
@@ -678,7 +694,7 @@ export function CampaignDetail() {
                 </Select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">Status</label>
+                <p className="block text-xs text-muted-foreground mb-1.5">Status</p>
                 <Select
                   value={campaignForm.status}
                   onValueChange={(v) => setCampaignForm({ ...campaignForm, status: v })}
@@ -697,9 +713,9 @@ export function CampaignDetail() {
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">
+              <p className="block text-xs text-muted-foreground mb-1.5">
                 Scheduled At <span className="text-muted-foreground/60">(optional)</span>
-              </label>
+              </p>
               <Input
                 type="datetime-local"
                 value={campaignForm.scheduled_at ? campaignForm.scheduled_at.slice(0, 16) : ""}
@@ -741,14 +757,14 @@ export function CampaignDetail() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">Name</label>
+                <p className="block text-xs text-muted-foreground mb-1.5">Name</p>
                 <Input
                   value={scriptForm.name}
                   onChange={(e) => setScriptForm({ ...scriptForm, name: e.target.value })}
                 />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">Attack Type</label>
+                <p className="block text-xs text-muted-foreground mb-1.5">Attack Type</p>
                 <Select
                   value={scriptForm.attack_type}
                   onValueChange={(v) => setScriptForm({ ...scriptForm, attack_type: v })}
@@ -769,7 +785,7 @@ export function CampaignDetail() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">Difficulty</label>
+                <p className="block text-xs text-muted-foreground mb-1.5">Difficulty</p>
                 <Select
                   value={scriptForm.difficulty}
                   onValueChange={(v) => setScriptForm({ ...scriptForm, difficulty: v })}
@@ -785,7 +801,7 @@ export function CampaignDetail() {
                 </Select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">Objective</label>
+                <p className="block text-xs text-muted-foreground mb-1.5">Objective</p>
                 <Input
                   value={scriptForm.objectives}
                   onChange={(e) => setScriptForm({ ...scriptForm, objectives: e.target.value })}
@@ -795,7 +811,7 @@ export function CampaignDetail() {
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">Description</label>
+              <p className="block text-xs text-muted-foreground mb-1.5">Description</p>
               <textarea
                 className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 rows={2}
@@ -805,9 +821,9 @@ export function CampaignDetail() {
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">
+              <p className="block text-xs text-muted-foreground mb-1.5">
                 Escalation Steps <span className="text-muted-foreground/60">(comma-separated)</span>
-              </label>
+              </p>
               <textarea
                 className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 rows={2}
@@ -854,9 +870,9 @@ export function CampaignDetail() {
           <div className="space-y-4">
             {/* Script mode toggle */}
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">
+              <p className="block text-xs text-muted-foreground mb-1.5">
                 Script Mode
-              </label>
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -893,9 +909,9 @@ export function CampaignDetail() {
             {scriptMode === "single" && (
               <>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1.5">
+                  <p className="block text-xs text-muted-foreground mb-1.5">
                     Script
-                  </label>
+                  </p>
                   <Select
                     value={selectedScriptId}
                     onValueChange={setSelectedScriptId}
@@ -917,9 +933,9 @@ export function CampaignDetail() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1.5">
+                  <p className="block text-xs text-muted-foreground mb-1.5">
                     Caller
-                  </label>
+                  </p>
                   <Select
                     value={selectedCallerId}
                     onValueChange={setSelectedCallerId}
@@ -943,10 +959,10 @@ export function CampaignDetail() {
             )}
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">
+              <p className="block text-xs text-muted-foreground mb-1.5">
                 Department{" "}
                 <span className="text-muted-foreground/60">(optional — all employees if blank)</span>
-              </label>
+              </p>
               <Select
                 value={selectedDepartment}
                 onValueChange={setSelectedDepartment}

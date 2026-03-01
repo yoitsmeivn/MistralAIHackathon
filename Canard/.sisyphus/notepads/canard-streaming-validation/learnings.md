@@ -1,0 +1,2 @@
+- 2026-03-01: Added in-process streaming under `app.streaming` with per-call queue fanout, SSE keepalive comments every 30s, optional audio passthrough filtering, and event emission hooks in Twilio receive/agent loops plus `close_call` on stream shutdown.
+- 2026-03-01: Added `app.validation.scorer` for zero-latency disclosure matching, attached `employee_profile` to `CallSessionData`, loaded profile after Twilio stream agent init, and now emit `scoring` events after each `user_speech` turn with tier/field/confidence metadata.

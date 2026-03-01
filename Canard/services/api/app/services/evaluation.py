@@ -300,7 +300,6 @@ async def evaluate_call(
         "flags": flags,
         "ai_summary": ai_summary,
         "sentiment_analysis": sentiment_analysis,
-        "coaching": coaching,
     }
 
     # Also save the transcript if we have one and the call doesn't already

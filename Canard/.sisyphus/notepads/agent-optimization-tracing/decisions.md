@@ -30,3 +30,23 @@
 ### Temperature
 - chat_completion(): 0.8 (social engineering benefits from creativity)
 - analyze_transcript(): 0.1 (deterministic scoring)
+
+## Session: backend-fixes-persona-call-complete (2026-03-01)
+
+### Persona Prompt Placement
+- Inject `persona_prompt` immediately after identity in `_build_from_dict()` so speaking-style guidance is loaded before target/employee context.
+
+### Script Lookup Query
+- Kept `list_scripts_by_campaign()` direct `scripts.campaign_id` query unchanged in `db/queries.py` because current app flow already persists `campaign_id` on script rows.
+
+### Call Completion Reason
+- Standardized completion marker handling to `end_reason = "call_complete"` when `[CALL_COMPLETE]` appears in streamed LLM response.
+
+## Session: campaign-launch-crash-fix (2026-03-01)
+
+### Polling Scope
+- Preserve existing `loadCampaignData()` signature and behavior, but stop using it in recurring polling to avoid reloading calls/scripts on every tick.
+
+### Data Fetch Strategy
+- Frontend caller/employee data is prefetched at mount and reused on launch dialog open to avoid repeated org-wide list queries.
+- Backend campaign detail aggregates now use a bounded sample (`limit=500`) because endpoint only needs summary counters.

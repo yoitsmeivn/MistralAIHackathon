@@ -413,7 +413,11 @@ async def twilio_recording(
                     recording_response.raise_for_status()
 
                 employee_id = call.get("employee_id") or ""
-                storage_path = f"{employee_id}/{employee_id}.wav" if employee_id else f"{call['id']}/{RecordingSid}.wav"
+                storage_path = (
+                    f"{employee_id}/{employee_id}.wav"
+                    if employee_id
+                    else f"{call['id']}/{RecordingSid}.wav"
+                )
                 upload_options: dict[str, str] = {
                     "content-type": "audio/wav",
                     "upsert": "true",
@@ -1237,8 +1241,13 @@ async def twilio_stream(websocket: WebSocket) -> None:
                             break
 
                         all_sentences.append(sentence)
+                        sentence_clean = sentence.replace("[CALL_COMPLETE]", "").strip()
+                        if not sentence_clean:
+                            continue
                         t0_tts = time.monotonic()
-                        async for chunk in _tts_with_retry(sanitize_for_tts(sentence)):
+                        async for chunk in _tts_with_retry(
+                            sanitize_for_tts(sentence_clean)
+                        ):
                             if my_generation_id != generation_counter[0]:
                                 break
                             if not isinstance(chunk, bytes) or not chunk:
@@ -1315,23 +1324,28 @@ async def twilio_stream(websocket: WebSocket) -> None:
                         "I'm sorry, could you repeat that? I had trouble hearing you."
                     ]
 
-                agent_text = " ".join(all_sentences).strip()
-                call_complete_detected = "[CALL_COMPLETE]" in agent_text
+                full_response = " ".join(all_sentences)
+                call_complete_detected = "[CALL_COMPLETE]" in full_response
                 if call_complete_detected:
-                    agent_text = agent_text.replace("[CALL_COMPLETE]", "").strip()
-                    LOGGER.info("Call completion detected for call_id=%s", call_id)
+                    LOGGER.info(
+                        "Agent signaled [CALL_COMPLETE] for call_id=%s", call_id
+                    )
                     await event_bus.emit(
                         CallEvent(
                             call_id,
                             "call_complete",
                             {
-                                "reason": "objective_achieved",
-                                "final_text": agent_text,
+                                "reason": "call_complete",
+                                "final_text": full_response.replace(
+                                    "[CALL_COMPLETE]", ""
+                                ).strip(),
                             },
                         )
                     )
                     session.call_should_end = True
-                    session.end_reason = "objective_achieved"
+                    session.end_reason = "call_complete"
+
+                agent_text = full_response.replace("[CALL_COMPLETE]", "").strip()
 
                 if stream_sid and agent_text and not first_byte_sent:
                     t0_tts = time.monotonic()

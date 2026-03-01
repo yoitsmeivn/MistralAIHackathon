@@ -50,6 +50,7 @@ export interface Caller {
   totalCalls: number;
   avgSuccessRate: number;
   createdAt?: string;
+  personaPrompt: string;
 }
 
 export interface Employee {

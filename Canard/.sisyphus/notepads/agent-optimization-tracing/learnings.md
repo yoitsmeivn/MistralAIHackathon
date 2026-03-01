@@ -156,3 +156,29 @@ def build_system_prompt(
 ### Notes
 - `main.py` imports reorganized: `logging` added after `asynccontextmanager`, weave try/except block before `from app.config import settings`
 - The `_op` fallback `def _op(fn): return fn` is a no-op identity function — zero overhead when weave absent
+
+## Session: backend-fixes-persona-call-complete (2026-03-01)
+
+### Completed
+- Added `persona_prompt` prompt-injection support in `_build_from_dict()` right after identity in `services/api/app/agent/prompts.py`.
+- Added `persona_prompt` fields across caller models and API request/response surfaces (`models/callers.py`, `routes/callers.py`, `models/api.py`).
+- Updated Twilio streaming agent loop to strip `[CALL_COMPLETE]` before TTS and set `session.call_should_end` when full response contains completion tag.
+- Updated `services/api/app/services/calls.py` completion flow to always persist transcript from session turns when recording transcript is unavailable.
+- Added `supabase/seed.sql` migration and seeded five named persona speaking-style prompts.
+
+### Verification
+- `lsp_diagnostics` clean on all changed Python files.
+- `python -m compileall app` succeeds from `services/api`.
+
+## Session: campaign-launch-crash-fix (2026-03-01)
+
+### Completed
+- Split campaign detail polling into two paths: full `loadCampaignData()` for mount/post-launch and lightweight `refreshCampaignStatus()` for interval refreshes.
+- Poll interval increased from 10s to 15s and now only updates `campaign` state from `getCampaign(id)`.
+- Launch dialog callers/employees are now prefetched on mount and conditionally refetched only if either list is empty.
+- Backend `api_get_campaign` call aggregation fetch reduced from 10,000 to 500 calls to prevent expensive repeated aggregate loads.
+
+### Verification
+- `services/api`: `.venv/bin/python -m pytest tests/ -v` -> 71 passed, 5 skipped.
+- `apps/web`: `pnpm build` -> success.
+- `lsp_diagnostics` clean on `apps/web/src/app/components/CampaignDetail.tsx` and `services/api/app/routes/campaigns.py`.

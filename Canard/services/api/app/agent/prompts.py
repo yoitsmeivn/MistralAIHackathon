@@ -264,6 +264,12 @@ def _build_from_dict(
         identity += f" Your name is {persona_name}."
     parts = [identity]
 
+    persona_prompt = ""
+    if caller:
+        persona_prompt = caller.get("persona_prompt", "") or ""
+    if persona_prompt:
+        parts.append(f"Your character and speaking style:\n{persona_prompt}")
+
     # Who you're calling — grounded context (do not invent)
     if employee or org:
         context_lines = [

@@ -164,7 +164,6 @@ async def _execute_campaign_calls(
         a_script_id = assignment["script_id"]
         a_caller_id = assignment["caller_id"]
 
-        queries.update_campaign_assignment(assignment_id, {"status": "in_progress"})
 
         try:
             await start_call(
