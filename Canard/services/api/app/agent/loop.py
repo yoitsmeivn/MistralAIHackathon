@@ -121,7 +121,7 @@ async def run_turn(call_id: str, user_speech: str) -> str:
     if llm_messages and llm_messages[-1].get("role") == "user":
         llm_messages[-1]["content"] = user_speech
 
-    response = await chat_completion(llm_messages, max_tokens=150)
+    response = await chat_completion(llm_messages, max_tokens=120)
     response = _expand_filler_response(response)
 
     session_store.add_message(call_id, "assistant", response)
@@ -146,7 +146,10 @@ async def run_turn_streaming(
             extra={"call_id": call_id, "redactions": redaction.redactions},
         )
 
-    session_store.add_message(call_id, "user", redaction.redacted_text)
+    # User message is now added in routes.py BEFORE this function is called.
+    # Check if it's already in context to avoid duplicates.
+    if not (session.messages and session.messages[-1].get("role") == "user" and session.messages[-1].get("content") == redaction.redacted_text):
+        session_store.add_message(call_id, "user", redaction.redacted_text)
 
     llm_messages = [dict(message) for message in session.messages]
     if llm_messages and llm_messages[-1].get("role") == "user":
@@ -154,13 +157,18 @@ async def run_turn_streaming(
 
     buffer = ""
     full_text = ""
-    sentence_endings = {". ", "? ", "! ", "\n"}
-    first_sentence = True
+    # Use sentence-pair chunking: wait for TWO sentence endings before yielding.
+    # This gives TTS a longer, more natural chunk to synthesize, eliminating the
+    # per-sentence HTTP round-trip gap that causes audible pauses between sentences.
+    sentence_endings = (". ", "? ", "! ", "\n")
+    first_chunk = True
+    pending_sentence = ""
 
-    async for chunk in chat_completion_stream(llm_messages, max_tokens=150):
+    async for chunk in chat_completion_stream(llm_messages, max_tokens=120):
         buffer += chunk
         full_text += chunk
 
+        # Find the first sentence boundary
         while True:
             found = -1
             for ending in sentence_endings:
@@ -171,17 +179,27 @@ async def run_turn_streaming(
                 break
             sentence = buffer[:found].strip()
             buffer = buffer[found:]
-            if sentence:
-                if first_sentence:
-                    sentence = _expand_filler_response(sentence)
-                    first_sentence = False
+            if not sentence:
+                continue
+            if first_chunk:
+                sentence = _expand_filler_response(sentence)
+                first_chunk = False
+                # Yield the first sentence immediately for low latency
                 yield sentence
+            elif pending_sentence:
+                # Pair up: yield previous + current together for fewer TTS calls
+                yield pending_sentence + " " + sentence
+                pending_sentence = ""
+            else:
+                pending_sentence = sentence
 
-    remaining = buffer.strip()
+    # Flush any remaining buffer
+    remaining = (pending_sentence + " " + buffer).strip() if pending_sentence else buffer.strip()
     if remaining:
-        if first_sentence:
+        if first_chunk:
             remaining = _expand_filler_response(remaining)
         yield remaining
+
 
     if full_text.strip():
         session_store.add_message(call_id, "assistant", full_text.strip())

@@ -676,55 +676,10 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     if payload:
                         decoded = base64.b64decode(payload)
 
-                        # ── Barge-in detection ──
-                        if (
-                            session.agent_is_speaking
-                            and time.monotonic() > session.barge_in_cooldown_until
-                        ):
-                            energy = _compute_mulaw_energy(decoded)
-                            if energy > _BARGE_IN_THRESHOLD:
-                                consecutive_loud += 1
-                            else:
-                                consecutive_loud = 0
-                            if consecutive_loud >= _BARGE_IN_FRAMES:
-                                # User is speaking over agent — clear queued audio
-                                await websocket.send_text(
-                                    json.dumps(
-                                        {"event": "clear", "streamSid": stream_sid}
-                                    )
-                                )
-                                await event_bus.emit(
-                                    CallEvent(
-                                        call_id,
-                                        "clear_sent",
-                                        {"stream_sid": stream_sid},
-                                    )
-                                )
-                                session.state_transition(AgentState.LISTENING)
-                                await event_bus.emit(
-                                    CallEvent(
-                                        call_id,
-                                        "state_transition",
-                                        {"new_state": session.agent_state.value},
-                                    )
-                                )
-                                generation_counter[0] += 1
-                                consecutive_loud = 0
-                                last_speech_time[0] = time.monotonic()
-                                silence_state["nudge_sent"] = False
-                                LOGGER.info(
-                                    "Barge-in detected: call_id=%s, clearing audio",
-                                    call_id,
-                                )
-                                await event_bus.emit(
-                                    CallEvent(
-                                        call_id,
-                                        "barge_in",
-                                        {"energy": round(energy, 1)},
-                                    )
-                                )
-                        else:
-                            consecutive_loud = 0
+                        # Barge-in detection disabled — the agent is the caller and should
+                        # never be interrupted by ambient noise or the callee's voice.
+                        # All three barge-in paths (raw audio, STT commit, process_accumulated)
+                        # have been removed so the agent speaks its full sentence uninterrupted.
 
                         if session.agent_state == AgentState.LISTENING:
                             await audio_queue.put(decoded)
@@ -986,7 +941,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
         Uses debouncing: accumulates STT transcripts and waits for 0.3s
         of silence before processing, so the user can finish their thought.
         """
-        DEBOUNCE_SECONDS = 0.3
+        DEBOUNCE_SECONDS = 0.15
         accumulated_text: list[str] = []
         debounce_task: asyncio.Task | None = None
         processing_lock = asyncio.Lock()
@@ -1019,83 +974,13 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 if not full_transcript.strip():
                     return
 
-                if session.agent_is_speaking:
-                    await asyncio.sleep(0.3)
-                    if session.agent_is_speaking:
-                        try:
-                            await websocket.send_text(
-                                json.dumps({"event": "clear", "streamSid": stream_sid})
-                            )
-                            await event_bus.emit(
-                                CallEvent(
-                                    call_id, "clear_sent", {"stream_sid": stream_sid}
-                                )
-                            )
-                        except Exception:
-                            pass
-                        session.state_transition(AgentState.LISTENING)
-                        await event_bus.emit(
-                            CallEvent(
-                                call_id,
-                                "state_transition",
-                                {"new_state": session.agent_state.value},
-                            )
-                        )
-
-                BRIDGE_PHRASES = [
-                    "Yeah so...",
-                    "Right, so the thing is...",
-                    "So basically...",
-                    "Okay so...",
-                    "Yeah and the thing is...",
-                ]
-                bridge_text = random.choice(BRIDGE_PHRASES)
-                try:
-                    bridge_audio = await text_to_speech(
-                        sanitize_for_tts(bridge_text),
-                        voice_id=_voice_id(),
-                        call_id=call_id,
-                    )
-                    if (
-                        bridge_audio
-                        and stream_sid
-                        and my_generation_id == generation_counter[0]
-                    ):
-                        session.state_transition(AgentState.SPEAKING)
-                        await event_bus.emit(
-                            CallEvent(
-                                call_id,
-                                "state_transition",
-                                {"new_state": session.agent_state.value},
-                            )
-                        )
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "event": "media",
-                                    "streamSid": stream_sid,
-                                    "media": {
-                                        "payload": base64.b64encode(
-                                            bridge_audio
-                                        ).decode()
-                                    },
-                                }
-                            )
-                        )
-                        session.audio_send_time = time.monotonic()
-                        session.audio_send_bytes += len(bridge_audio)
-                        session.barge_in_cooldown_until = time.monotonic() + 0.3
-                        session.audio_bytes_sent_total += len(bridge_audio)
-                        await event_bus.emit(
-                            CallEvent(
-                                call_id, "bridge_phrase_sent", {"text": bridge_text}
-                            )
-                        )
-                except Exception:
-                    LOGGER.debug(
-                        "Bridge phrase injection failed for call_id=%s, continuing",
-                        call_id,
-                    )
+                # Add user message to context IMMEDIATELY before calling Mistral.
+                # The old 10-second wait loop caused responses to be based on stale context.
+                from app.agent.memory import session_store as _ss
+                _agent_sess = _ss.get(call_id)
+                if _agent_sess is not None:
+                    # Add to conversation context NOW (before Mistral sees it)
+                    _ss.add_message(call_id, "user", full_transcript)
 
                 LOGGER.info(
                     "[call=%s turn=%d] User: %r",
@@ -1522,37 +1407,13 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     )
                 )
 
+                # STT barge-in disabled — if the agent is speaking, queue the transcript
+                # for processing after the agent finishes. Never interrupt mid-sentence.
                 if session.agent_is_speaking:
-                    try:
-                        await websocket.send_text(
-                            json.dumps({"event": "clear", "streamSid": stream_sid})
-                        )
-                        await event_bus.emit(
-                            CallEvent(call_id, "clear_sent", {"stream_sid": stream_sid})
-                        )
-                    except Exception:
-                        pass
-                    session.state_transition(AgentState.LISTENING)
-                    await event_bus.emit(
-                        CallEvent(
-                            call_id,
-                            "state_transition",
-                            {"new_state": session.agent_state.value},
-                        )
+                    LOGGER.debug(
+                        "STT commit while agent speaking — queuing for after turn: %r",
+                        transcript.strip(),
                     )
-                    generation_counter[0] += 1
-                    LOGGER.info(
-                        "STT barge-in: user spoke during agent audio, call_id=%s",
-                        call_id,
-                    )
-                    await event_bus.emit(
-                        CallEvent(
-                            call_id,
-                            "barge_in",
-                            {"source": "stt", "text": transcript.strip()},
-                        )
-                    )
-
                 # Accumulate transcript fragment
                 accumulated_text.append(transcript.strip())
 

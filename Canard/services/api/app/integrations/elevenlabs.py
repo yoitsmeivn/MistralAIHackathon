@@ -43,11 +43,11 @@ LOGGER = logging.getLogger(__name__)
 _TWILIO_OUTPUT_FORMAT = "ulaw_8000"
 
 _PHONE_VOICE_SETTINGS = VoiceSettings(
-    stability=0.45,
+    stability=0.35,
     similarity_boost=0.75,
     style=0.0,
     use_speaker_boost=False,
-    speed=1.05,
+    speed=1.15,
 )
 
 
@@ -159,7 +159,7 @@ async def text_to_speech(
         model_id="eleven_flash_v2_5",
         output_format=output_format,
         voice_settings=_PHONE_VOICE_SETTINGS,
-        optimize_streaming_latency=3,
+        optimize_streaming_latency=4,
     ):
         if isinstance(chunk, bytes):
             chunks.append(chunk)
@@ -214,7 +214,7 @@ async def text_to_speech_streaming(
         model_id="eleven_flash_v2_5",
         output_format=output_format,
         voice_settings=_PHONE_VOICE_SETTINGS,
-        optimize_streaming_latency=3,
+        optimize_streaming_latency=4,
     ):
         if isinstance(chunk, bytes):
             yield chunk
