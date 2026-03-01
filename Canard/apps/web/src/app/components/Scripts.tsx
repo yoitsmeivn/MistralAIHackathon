@@ -50,6 +50,7 @@ const emptyFormData = {
   campaignId: "",
   attackType: "",
   difficulty: "medium" as ScriptDifficulty,
+  systemPrompt: "",
   description: "",
   objectives: [] as string[],
   escalationSteps: [] as string[],
@@ -92,6 +93,7 @@ export function Scripts() {
       campaignId: script.campaignId || "",
       attackType: script.attackType,
       difficulty: script.difficulty,
+      systemPrompt: script.systemPrompt || "",
       description: script.description,
       objectives: [...script.objectives],
       escalationSteps: [...script.escalationSteps],
@@ -107,6 +109,7 @@ export function Scripts() {
           campaign_id: formData.campaignId || undefined,
           attack_type: formData.attackType || undefined,
           difficulty: formData.difficulty,
+          system_prompt: formData.systemPrompt || undefined,
           description: formData.description || undefined,
           objectives: formData.objectives,
           escalation_steps: formData.escalationSteps,
@@ -117,6 +120,7 @@ export function Scripts() {
           campaign_id: formData.campaignId,
           attack_type: formData.attackType || undefined,
           difficulty: formData.difficulty,
+          system_prompt: formData.systemPrompt || undefined,
           description: formData.description || undefined,
           objectives: formData.objectives,
           escalation_steps: formData.escalationSteps,
@@ -388,6 +392,19 @@ export function Scripts() {
                 rows={2}
                 className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring/50 bg-input-background resize-none"
                 placeholder="Brief description of this script..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                Target Environment
+              </label>
+              <textarea
+                value={formData.systemPrompt}
+                onChange={(e) => setFormData({ ...formData, systemPrompt: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring/50 bg-input-background resize-none"
+                placeholder="Systems and tools the target uses (e.g., Okta SSO, Workday HR, Cisco AnyConnect VPN, Epic EHR)..."
               />
             </div>
 

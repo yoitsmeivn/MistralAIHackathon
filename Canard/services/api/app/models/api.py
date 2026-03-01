@@ -79,6 +79,7 @@ class ScriptListItem(CamelModel):
     campaign_name: str | None = None
     attack_type: str = ""
     difficulty: str = "medium"
+    system_prompt: str = ""
     objectives: list[str] = Field(default_factory=list)
     escalation_steps: list[str] = Field(default_factory=list)
     description: str = ""
