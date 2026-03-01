@@ -97,6 +97,7 @@ export interface Call {
   transcript: string;
   flags: string[];
   aiSummary?: string;
+  recordingUrl?: string;
 }
 
 export type ScriptDifficulty = "easy" | "medium" | "hard";

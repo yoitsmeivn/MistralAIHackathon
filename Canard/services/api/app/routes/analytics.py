@@ -37,6 +37,21 @@ POSITIVE_FLAGS = {
 }
 
 
+def _normalize_flags(flags_raw) -> list[str]:
+    """Normalize flags from DB — handles both string lists and dict lists."""
+    if not flags_raw:
+        return []
+    result = []
+    for f in flags_raw:
+        if isinstance(f, str):
+            result.append(f)
+        elif isinstance(f, dict):
+            result.append(f.get("type", str(f)))
+        else:
+            result.append(str(f))
+    return result
+
+
 def _resolve_org(user: dict | None, org_id: str | None) -> str:
     resolved = user["org_id"] if user else org_id
     if not resolved:
@@ -185,7 +200,7 @@ async def api_repeat_offenders(
         # Collect all flags across failures
         all_flags: list[str] = []
         for c in failed:
-            all_flags.extend(c.get("flags") or [])
+            all_flags.extend(_normalize_flags(c.get("flags")))
         common = [f for f, _ in Counter(all_flags).most_common(3)]
 
         # Chronological risk scores for sparkline
@@ -320,7 +335,7 @@ async def api_flag_frequency(
 
     flag_counts: Counter[str] = Counter()
     for c in completed:
-        for flag in c.get("flags") or []:
+        for flag in _normalize_flags(c.get("flags")):
             flag_counts[flag] += 1
 
     items: list[FlagFrequencyResponse] = []
@@ -429,7 +444,7 @@ async def api_employee_detail(
     # Flag summary
     flag_counts: Counter[str] = Counter()
     for c in completed:
-        for flag in c.get("flags") or []:
+        for flag in _normalize_flags(c.get("flags")):
             flag_counts[flag] += 1
     flag_summary = [
         FlagFrequencyResponse(
@@ -516,7 +531,7 @@ async def api_dept_flag_pivot(
     for c in completed:
         eid = c.get("employee_id", "")
         dept = emp_lookup.get(eid, {}).get("department", "Other")
-        for flag in c.get("flags") or []:
+        for flag in _normalize_flags(c.get("flags")):
             is_pos = flag in POSITIVE_FLAGS
             if flag_type == "positive" and not is_pos:
                 continue

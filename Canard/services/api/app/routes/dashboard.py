@@ -162,6 +162,21 @@ _POSITIVE_FLAGS = {
 }
 
 
+def _normalize_flags(flags_raw) -> list[str]:
+    """Normalize flags from DB — handles both string lists and dict lists."""
+    if not flags_raw:
+        return []
+    result = []
+    for f in flags_raw:
+        if isinstance(f, str):
+            result.append(f)
+        elif isinstance(f, dict):
+            result.append(f.get("type", str(f)))
+        else:
+            result.append(str(f))
+    return result
+
+
 @router.get("/smart-widgets", response_model=SmartWidgetsResponse)
 async def api_smart_widgets(
     user: OptionalUser,
@@ -196,7 +211,7 @@ async def api_smart_widgets(
         es["total"] += 1
         if c.get("employee_compliance") == "failed":
             es["failed"] += 1
-        for flag in c.get("flags") or []:
+        for flag in _normalize_flags(c.get("flags")):
             if flag not in _POSITIVE_FLAGS:
                 es["flags"].append(flag)
 
@@ -296,7 +311,7 @@ async def api_smart_widgets(
 
     neg_flags: Counter[str] = Counter()
     for c in failures_30d:
-        for flag in c.get("flags") or []:
+        for flag in _normalize_flags(c.get("flags")):
             if flag not in _POSITIVE_FLAGS:
                 neg_flags[flag] += 1
     most_common_flag = neg_flags.most_common(1)[0][0] if neg_flags else ""
@@ -310,7 +325,7 @@ async def api_smart_widgets(
             department=emp_lookup.get(c.get("employee_id", ""), {}).get("department", ""),
             attack_vector=camp_lookup.get(c.get("campaign_id", ""), {}).get("attack_vector", "Unknown"),
             risk_score=c.get("risk_score", 0) or 0,
-            flags=[f for f in (c.get("flags") or []) if f not in _POSITIVE_FLAGS],
+            flags=[f for f in _normalize_flags(c.get("flags")) if f not in _POSITIVE_FLAGS],
             occurred_at=c.get("started_at") or c.get("created_at") or "",
         )
         for c in sorted_failures

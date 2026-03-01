@@ -132,6 +132,9 @@ export function CampaignDetail() {
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [launching, setLaunching] = useState(false);
 
+  // Call detail dialog state
+  const [selectedCall, setSelectedCall] = useState<Call | null>(null);
+
   // Campaign edit dialog state
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [campaignForm, setCampaignForm] = useState({
@@ -605,7 +608,7 @@ export function CampaignDetail() {
                   </TableRow>
                 ) : (
                   callResults.map((result) => (
-                    <TableRow key={result.id}>
+                    <TableRow key={result.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedCall(result)}>
                       <TableCell className="pl-6 font-medium">
                         {result.employeeName}
                       </TableCell>
@@ -1012,6 +1015,105 @@ export function CampaignDetail() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Call Detail Dialog */}
+      <Dialog open={!!selectedCall} onOpenChange={(open) => !open && setSelectedCall(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedCall?.employeeName}</DialogTitle>
+            <DialogDescription>
+              {selectedCall?.campaignName} · {selectedCall?.startedAt}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedCall && (
+            <div className="space-y-4">
+              {/* Audio Player */}
+              {selectedCall.recordingUrl && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Recording</p>
+                  <audio controls className="w-full" src={selectedCall.recordingUrl} />
+                </div>
+              )}
+
+              {/* Risk + Compliance */}
+              <div className="flex items-center gap-6">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Risk Score</p>
+                  <p className="text-xl font-medium" style={{ color: getRiskColor(selectedCall.riskScore) }}>
+                    {selectedCall.riskScore}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Result</p>
+                  <Badge
+                    className="border-0 capitalize"
+                    style={
+                      selectedCall.employeeCompliance === "passed"
+                        ? { backgroundColor: "#f0fdf4", color: "#22c55e" }
+                        : selectedCall.employeeCompliance === "failed"
+                        ? { backgroundColor: "#fef2f2", color: "#ef4444" }
+                        : { backgroundColor: "#fffbeb", color: "#f59e0b" }
+                    }
+                  >
+                    {selectedCall.employeeCompliance || "—"}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Duration</p>
+                  <p className="text-sm">{selectedCall.duration}</p>
+                </div>
+              </div>
+
+              {/* AI Summary */}
+              {selectedCall.aiSummary && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">AI Summary</p>
+                  <p className="text-sm text-foreground bg-muted/30 rounded p-3">{selectedCall.aiSummary}</p>
+                </div>
+              )}
+
+              {/* Flags */}
+              {selectedCall.flags && selectedCall.flags.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Flags</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedCall.flags.map((flag, i) => (
+                      <Badge key={i} variant="outline" className="text-xs">
+                        {flag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transcript */}
+              {selectedCall.transcript && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Transcript</p>
+                  <div className="space-y-1 max-h-64 overflow-y-auto border rounded p-2">
+                    {selectedCall.transcript.split('\n').filter(Boolean).map((line, i) => {
+                      const isUser = line.startsWith('USER:');
+                      return (
+                        <div
+                          key={i}
+                          className={`text-xs p-2 rounded ${
+                            isUser
+                              ? 'bg-primary/10 text-foreground ml-8'
+                              : 'bg-muted/30 text-muted-foreground mr-8'
+                          }`}
+                        >
+                          {line}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </motion.div>

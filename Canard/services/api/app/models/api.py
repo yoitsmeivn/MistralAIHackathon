@@ -120,6 +120,7 @@ class CallEnriched(CamelModel):
     transcript: str = ""
     flags: list[str] = Field(default_factory=list)
     ai_summary: str = ""
+    recording_url: str = ""
 
 
 # ── Dashboard aggregates ──

@@ -93,6 +93,7 @@ async def api_list_calls(
                 transcript=c.get("transcript") or "",
                 flags=flags,
                 ai_summary=c.get("ai_summary") or "",
+                recording_url=c.get("recording_url") or "",
             )
         )
     return items
@@ -172,4 +173,5 @@ async def api_call_detail(call_id: str) -> CallEnriched:
         transcript=c.get("transcript") or "",
         flags=flags,
         ai_summary=c.get("ai_summary") or "",
+        recording_url=c.get("recording_url") or "",
     )

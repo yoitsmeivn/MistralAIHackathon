@@ -13,6 +13,15 @@ from app.services.audio_features import (
     extract_audio_features,
 )
 
+# Map Mistral compliance values → analytics-compatible values
+COMPLIANCE_MAP = {
+    "strong_resistance": "passed",
+    "moderate_resistance": "passed",
+    "partial_compliance": "partial",
+    "significant_compliance": "failed",
+    "full_compliance": "failed",
+}
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -257,16 +266,11 @@ async def evaluate_call(
     # ── 6. Validate and clamp ──
     risk_score = max(0, min(100, int(result.get("risk_score", 0))))
 
-    valid_compliance = {
-        "strong_resistance",
-        "moderate_resistance",
-        "partial_compliance",
-        "significant_compliance",
-        "full_compliance",
-    }
-    employee_compliance = result.get("employee_compliance", "partial_compliance")
+    valid_compliance = {"passed", "failed", "partial"}
+    employee_compliance_raw = result.get("employee_compliance", "partial_compliance")
+    employee_compliance = COMPLIANCE_MAP.get(employee_compliance_raw, employee_compliance_raw)
     if employee_compliance not in valid_compliance:
-        employee_compliance = "partial_compliance"
+        employee_compliance = "partial"
 
     flags_raw = result.get("flags", [])
     flags = [str(f) for f in flags_raw] if isinstance(flags_raw, list) else []
