@@ -27,9 +27,9 @@ import { getCallers, createCaller, updateCaller, deleteCaller } from "../service
 const ELEVENLABS_VOICES = [
   { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", description: "Calm, young female" },
   { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", description: "Strong, confident female" },
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", description: "Soft, warm female" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", description: "Soft, warm female" },
   { id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Well-rounded male" },
-  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", description: "Friendly young female" },
+  { id: "nPczCjzI2devNBz1zQrb", name: "Brian", description: "Deep, narrating male" },
   { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", description: "Deep, authoritative male" },
   { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", description: "Crisp, confident male" },
   { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, narrative male" },
