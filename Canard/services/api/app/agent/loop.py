@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.agent.memory import session_store
 from app.agent.redaction import redact_pii
 from app.integrations.mistral import chat_completion
 
+
+def _noop_op(fn):  # type: ignore[misc]
+    return fn
+
+
+_op: Any = _noop_op
 try:
     import weave as _weave
+
     _op = _weave.op
 except ImportError:
-    def _op(fn):  # type: ignore[misc]
-        return fn
+    pass
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +62,7 @@ async def run_turn(call_id: str, user_speech: str) -> str:
     if llm_messages and llm_messages[-1].get("role") == "user":
         llm_messages[-1]["content"] = user_speech
 
-    response = await chat_completion(llm_messages)
+    response = await chat_completion(llm_messages, max_tokens=150)
 
     session_store.add_message(call_id, "assistant", response)
     session.turn_count += 1

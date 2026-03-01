@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import logging
+import os
 
 import uvicorn
 from fastapi import FastAPI
@@ -33,6 +34,8 @@ from app.twilio_voice.routes import router as twilio_router
 async def lifespan(_app: FastAPI):
     if _HAS_WEAVE:
         try:
+            if settings.wandb_api_key:
+                os.environ.setdefault("WANDB_API_KEY", settings.wandb_api_key)
             _weave.init(settings.wandb_project)
             LOGGER.info("W&B Weave initialized for project: %s", settings.wandb_project)
         except Exception as exc:

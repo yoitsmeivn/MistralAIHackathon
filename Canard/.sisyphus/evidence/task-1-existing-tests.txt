@@ -1,0 +1,7 @@
+Command:
+python -m pytest services/api/tests/test_health.py services/api/tests/test_models.py services/api/tests/test_redaction.py -v
+
+Result:
+- 14 collected, 14 passed
+- Runtime: 1.02s
+- Warning: RequestsDependencyWarning from requests package dependency compatibility

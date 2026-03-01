@@ -5,22 +5,29 @@ import asyncio
 import base64
 import json
 import logging
+import random
 import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, Response, WebSocket, WebSocketDisconnect
 
-from app.agent import redact_pii
+from app.agent import (
+    build_system_prompt,
+    end_session,
+    redact_pii,
+    run_turn,
+    start_session,
+)
 from app.agent.prompts import STREAM_GREETING
 from app.config import settings as cfg
 from app.integrations.elevenlabs import (
     realtime_stt_session,
+    sanitize_for_tts,
     speech_to_text_from_url,
     text_to_speech,
 )
 from app.twilio_voice import twiml
 from app.twilio_voice.session import (
-    CallSessionData,
     TurnRole,
     create_session,
     get_session,
@@ -32,33 +39,98 @@ LOGGER = logging.getLogger(__name__)
 router = APIRouter(prefix="/twilio", tags=["twilio"])
 
 
-# ---------------------------------------------------------------------------
-# Agent reply stub — TODO(mistral): Replace with Mistral LLM integration
-# ---------------------------------------------------------------------------
-# INSERTION POINT for Mistral:
-#   1. Initialize agent session at stream start (after handshake):
-#        from app.agent import start_session, build_system_prompt
-#        script = <fetch script from DB>
-#        prompt = build_system_prompt(script["name"], script["guidelines"])
-#        await start_session(call_id, script_id, prompt)
-#   2. Replace the body of generate_agent_reply() with:
-#        from app.agent import run_turn
-#        return await run_turn(call_id, transcript)
-#   3. End session on stream close:
-#        from app.agent import end_session
-#        await end_session(call_id)
-# ---------------------------------------------------------------------------
+async def generate_agent_reply(call_id: str, transcript: str) -> str:
+    """Generate the agent's text response using the Mistral LLM agent."""
+    try:
+        return await run_turn(call_id, transcript)
+    except Exception:
+        LOGGER.exception("Mistral agent reply failed for call_id=%s", call_id)
+        return "I'm sorry, could you repeat that? I had trouble hearing you."
 
 
-async def generate_agent_reply(_call_id: str, transcript: str) -> str:
-    """Generate the agent's text response for the real-time voice loop.
+async def _init_agent_session(call_id: str) -> None:
+    """Fetch script/caller from DB and initialize the Mistral agent session.
 
-    **STUB** — returns a deterministic echo for end-to-end pipeline testing.
+    Follows the same safe-wrapper pattern as _lookup_call_safe / _update_call_safe.
+    DB failures are logged but do not prevent session creation - a fallback
+    prompt is used instead.
     """
-    if not transcript.strip():
-        return "Sorry, I didn't catch that. Could you please repeat?"
-    return (
-        f"I heard you say: {transcript}. Is there anything else you'd like to discuss?"
+    script: dict | None = None
+    caller: dict | None = None
+    script_id = ""
+
+    try:
+        from app.db import queries
+
+        call_record = queries.get_call(call_id)
+        if call_record:
+            sid = call_record.get("script_id")
+            if sid:
+                script_id = sid
+                script = queries.get_script(sid)
+            cid = call_record.get("caller_id")
+            if cid:
+                caller = queries.get_caller(cid)
+    except Exception:
+        LOGGER.warning(
+            "DB lookup failed during agent init for call_id=%s", call_id, exc_info=True
+        )
+
+    if script:
+
+        def _to_list(value: object) -> list:
+            if isinstance(value, list):
+                return value
+            if isinstance(value, str):
+                try:
+                    parsed = json.loads(value)
+                    if isinstance(parsed, list):
+                        return parsed
+                except (json.JSONDecodeError, ValueError):
+                    return [value] if value.strip() else []
+            return []
+
+        all_objectives = _to_list(script.get("objectives", []))
+        selected_objectives = all_objectives
+        if len(all_objectives) > 1:
+            num_to_pick = random.randint(1, min(2, len(all_objectives)))
+            selected_objectives = random.sample(all_objectives, num_to_pick)
+            LOGGER.info(
+                "Randomized objectives for call_id=%s: %s (from %d total)",
+                call_id,
+                selected_objectives,
+                len(all_objectives),
+            )
+
+        all_escalation_steps = _to_list(script.get("escalation_steps", []))
+        selected_escalation_steps = all_escalation_steps
+        if len(all_escalation_steps) > 2:
+            shuffled = random.sample(all_escalation_steps, len(all_escalation_steps))
+            num_to_pick = random.randint(2, min(3, len(shuffled)))
+            selected_escalation_steps = shuffled[:num_to_pick]
+            LOGGER.info(
+                "Randomized escalation for call_id=%s: %s (from %d total)",
+                call_id,
+                selected_escalation_steps,
+                len(all_escalation_steps),
+            )
+
+        script = {
+            **script,
+            "objectives": selected_objectives,
+            "escalation_steps": selected_escalation_steps,
+            "selected_objectives": selected_objectives,
+            "selected_escalation_steps": selected_escalation_steps,
+        }
+
+    system_prompt = (
+        build_system_prompt(script, caller=caller)
+        if script
+        else build_system_prompt(scenario_name="Security Training")
+    )
+    await start_session(call_id, script_id, system_prompt)
+    LOGGER.info(
+        "Agent session initialized: call_id=%s script_id=%s", call_id, script_id
     )
 
 
@@ -172,7 +244,6 @@ async def twilio_status(
         #   update_call(call_id, {status, ended_at, recording_url, duration})
         #   For each turn in session.turns:
         #       create_turn({call_id, role, text_redacted, turn_index, ...})
-        #   TODO(mistral): run_post_call_analysis(call_id, recording_transcript)
         _update_call_safe(
             call_id,
             {
@@ -247,7 +318,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
       2. Backend sends ElevenLabs TTS greeting via WebSocket immediately
       3. Caller speaks → Twilio media → ElevenLabs Realtime STT
       4. STT yields committed_transcript (VAD-based)
-      5. generate_agent_reply() produces text (TODO(mistral): replace stub)
+      5. generate_agent_reply() produces text (Mistral LLM agent)
       6. ElevenLabs TTS converts text → ulaw_8000 bytes
       7. Audio sent to Twilio via WebSocket → caller hears agent
       8. Repeat until stop/disconnect
@@ -321,11 +392,23 @@ async def twilio_stream(websocket: WebSocket) -> None:
     )
 
     # ------------------------------------------------------------------
+    # Phase 2.5 - Initialize Mistral agent session
+    # ------------------------------------------------------------------
+    try:
+        await _init_agent_session(call_id)
+    except Exception:
+        LOGGER.warning(
+            "Agent session init failed for call_id=%s, agent replies will use fallback",
+            call_id,
+            exc_info=True,
+        )
+
+    # ------------------------------------------------------------------
     # Phase 3 — Send ElevenLabs TTS greeting (agent speaks first)
     # ------------------------------------------------------------------
     try:
         t0 = time.monotonic()
-        greeting_audio = await text_to_speech(STREAM_GREETING)
+        greeting_audio = await text_to_speech(sanitize_for_tts(STREAM_GREETING))
         tts_ms = (time.monotonic() - t0) * 1000
 
         if greeting_audio and stream_sid:
@@ -433,7 +516,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 )
                 # TODO(db): create_turn({call_id, role="user", text_redacted, ...})
 
-                # ── Agent reply (TODO(mistral): replace stub) ──
+                # ── Agent reply (Mistral LLM agent) ──
                 t0 = time.monotonic()
                 agent_text = await generate_agent_reply(call_id, transcript)
                 agent_ms = (time.monotonic() - t0) * 1000
@@ -449,7 +532,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
 
                 # ── ElevenLabs TTS → ulaw_8000 bytes ──
                 t0 = time.monotonic()
-                audio_bytes = await text_to_speech(agent_text)
+                audio_bytes = await text_to_speech(sanitize_for_tts(agent_text))
                 tts_ms = (time.monotonic() - t0) * 1000
                 session.total_tts_ms += tts_ms
 
@@ -518,6 +601,12 @@ async def twilio_stream(websocket: WebSocket) -> None:
     finally:
         receive_task.cancel()
         agent_task.cancel()
+        try:
+            await end_session(call_id)
+        except Exception:
+            LOGGER.warning(
+                "Failed to end agent session for call_id=%s", call_id, exc_info=True
+            )
         session.stream_ended_at = datetime.now(timezone.utc).isoformat()
 
         # ── TODO(db): Persist ALL accumulated session data ──
