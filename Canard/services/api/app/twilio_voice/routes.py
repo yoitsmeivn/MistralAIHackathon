@@ -18,6 +18,7 @@ from app.agent import (
     end_session,
     redact_pii,
     run_turn,
+    run_turn_streaming,
     start_session,
 )
 from app.agent.memory import session_store
@@ -566,6 +567,8 @@ async def twilio_stream(websocket: WebSocket) -> None:
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
     last_speech_time = [time.monotonic()]
     silence_state = {"nudge_sent": False}
+    last_nudge_time = [0.0]
+    generation_counter = [0]
 
     async def _receive_twilio() -> None:
         """Forward Twilio ``media`` chunks into the STT audio queue."""
@@ -603,6 +606,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                                     )
                                 )
                                 session.state_transition(AgentState.LISTENING)
+                                generation_counter[0] += 1
                                 consecutive_loud = 0
                                 last_speech_time[0] = time.monotonic()
                                 silence_state["nudge_sent"] = False
@@ -685,8 +689,8 @@ async def twilio_stream(websocket: WebSocket) -> None:
                         call_id,
                     )
 
-            if session.agent_is_speaking:
-                last_speech_time[0] = time.monotonic()
+            if session.agent_state != AgentState.LISTENING:
+                last_speech_time[0] = time.monotonic()  # reset timer while not listening
                 continue
 
             elapsed = time.monotonic() - last_speech_time[0]
@@ -746,7 +750,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     LOGGER.debug("WebSocket close during silence timeout failed")
                 break
 
-            elif elapsed >= 8.0 and not silence_state["nudge_sent"]:
+            elif elapsed >= 8.0 and not silence_state["nudge_sent"] and (time.monotonic() - last_nudge_time[0]) >= 15.0:
                 nudge_phrases = [
                     "Hello? You still there?",
                     "Hey, you there?",
@@ -793,6 +797,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 except Exception:
                     LOGGER.warning("Failed to send nudge for call_id=%s", call_id)
                 silence_state["nudge_sent"] = True
+                last_nudge_time[0] = time.monotonic()
 
     async def _agent_loop() -> None:
         """Core loop: ElevenLabs STT → Agent reply → ElevenLabs TTS → Twilio.
@@ -804,7 +809,6 @@ async def twilio_stream(websocket: WebSocket) -> None:
         accumulated_text: list[str] = []
         debounce_task: asyncio.Task | None = None
         processing_lock = asyncio.Lock()
-        generation_counter = [0]
 
         async def _process_accumulated() -> None:
             """Process all accumulated transcripts as one user turn."""
@@ -892,13 +896,144 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     redacted_text=redaction.redacted_text,
                 )
 
-                # ── Agent reply (Mistral LLM agent) ──
                 last_speech_time[0] = time.monotonic()
-                t0 = time.monotonic()
-                agent_text = await generate_agent_reply(call_id, full_transcript)
-                if my_generation_id != generation_counter[0]:
-                    return
-                agent_ms = (time.monotonic() - t0) * 1000
+                t_start = time.monotonic()
+                first_byte_ms = 0.0
+                first_byte_sent = False
+                all_sentences: list[str] = []
+
+                try:
+                    async for sentence in run_turn_streaming(call_id, full_transcript):
+                        if my_generation_id != generation_counter[0]:
+                            await event_bus.emit(
+                                CallEvent(
+                                    call_id,
+                                    "generation_cancelled",
+                                    {
+                                        "cancelled_id": my_generation_id,
+                                        "current_id": generation_counter[0],
+                                    },
+                                )
+                            )
+                            break
+
+                        t0_tts = time.monotonic()
+                        audio_bytes = await text_to_speech(
+                            sanitize_for_tts(sentence), call_id=call_id
+                        )
+                        tts_ms = (time.monotonic() - t0_tts) * 1000
+                        session.total_tts_ms += tts_ms
+                        all_sentences.append(sentence)
+
+                        if stream_sid and audio_bytes:
+                            if not first_byte_sent:
+                                first_byte_ms = (time.monotonic() - t_start) * 1000
+                                first_byte_sent = True
+                            session.state_transition(AgentState.SPEAKING)
+                            session.audio_send_time = time.monotonic()
+                            session.audio_send_bytes = len(audio_bytes)
+                            try:
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {
+                                            "event": "media",
+                                            "streamSid": stream_sid,
+                                            "media": {
+                                                "payload": base64.b64encode(
+                                                    audio_bytes
+                                                ).decode(),
+                                            },
+                                        }
+                                    )
+                                )
+                                session.barge_in_cooldown_until = time.monotonic() + 0.5
+                                session.audio_bytes_sent_total += len(audio_bytes)
+                            except Exception:
+                                session.add_error(
+                                    "twilio",
+                                    "send_failed",
+                                    f"Failed to send audio for turn {session.next_turn_index - 1}",
+                                )
+                                LOGGER.warning(
+                                    "Failed to send audio to Twilio call_id=%s", call_id
+                                )
+
+                        if my_generation_id != generation_counter[0]:
+                            await event_bus.emit(
+                                CallEvent(
+                                    call_id,
+                                    "generation_cancelled",
+                                    {
+                                        "cancelled_id": my_generation_id,
+                                        "current_id": generation_counter[0],
+                                    },
+                                )
+                            )
+                            break
+                except Exception:
+                    LOGGER.exception(
+                        "Mistral agent reply failed for call_id=%s", call_id
+                    )
+                    all_sentences = [
+                        "I'm sorry, could you repeat that? I had trouble hearing you."
+                    ]
+
+                agent_text = " ".join(all_sentences).strip()
+                if stream_sid and agent_text and not first_byte_sent:
+                    t0_tts = time.monotonic()
+                    audio_bytes = await text_to_speech(
+                        sanitize_for_tts(agent_text), call_id=call_id
+                    )
+                    tts_ms = (time.monotonic() - t0_tts) * 1000
+                    session.total_tts_ms += tts_ms
+                    if audio_bytes:
+                        first_byte_ms = (time.monotonic() - t_start) * 1000
+                        first_byte_sent = True
+                        session.state_transition(AgentState.SPEAKING)
+                        session.audio_send_time = time.monotonic()
+                        session.audio_send_bytes = len(audio_bytes)
+                        try:
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "event": "media",
+                                        "streamSid": stream_sid,
+                                        "media": {
+                                            "payload": base64.b64encode(
+                                                audio_bytes
+                                            ).decode(),
+                                        },
+                                    }
+                                )
+                            )
+                            session.barge_in_cooldown_until = time.monotonic() + 0.5
+                            session.audio_bytes_sent_total += len(audio_bytes)
+                        except Exception:
+                            session.add_error(
+                                "twilio",
+                                "send_failed",
+                                f"Failed to send audio for turn {session.next_turn_index - 1}",
+                            )
+                            LOGGER.warning(
+                                "Failed to send audio to Twilio call_id=%s", call_id
+                            )
+                if stream_sid and agent_text:
+                    try:
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "event": "mark",
+                                    "streamSid": stream_sid,
+                                    "mark": {
+                                        "name": f"agent_turn_{session.next_turn_index - 1}",
+                                    },
+                                }
+                            )
+                        )
+                    except Exception:
+                        pass
+
+                agent_ms = (time.monotonic() - t_start) * 1000
                 session.total_agent_ms += agent_ms
 
                 LOGGER.info(
@@ -920,80 +1055,36 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     )
                 )
 
-                # ── ElevenLabs TTS → ulaw_8000 bytes ──
-                t0 = time.monotonic()
-                audio_bytes = await text_to_speech(
-                    sanitize_for_tts(agent_text), call_id=call_id
-                )
-                tts_ms = (time.monotonic() - t0) * 1000
-                session.total_tts_ms += tts_ms
                 await event_bus.emit(
                     CallEvent(
                         call_id,
                         "timing",
                         {
-                            "agent_ms": round(agent_ms, 1),
-                            "tts_ms": round(tts_ms, 1),
-                            "audio_bytes": len(audio_bytes) if audio_bytes else 0,
+                            "first_byte_ms": round(
+                                first_byte_ms if first_byte_sent else 0, 1
+                            ),
+                            "tts_ms": round(session.total_tts_ms, 1),
+                            "audio_bytes": session.audio_bytes_sent_total,
                             "turn": session.next_turn_index,
                         },
                     )
                 )
 
-                # Record agent turn
-                session.add_turn(
-                    TurnRole.AGENT,
-                    agent_text,
-                    tts_duration_ms=tts_ms,
-                    audio_bytes_sent=len(audio_bytes) if audio_bytes else 0,
-                )
-
-                # ── Send audio back to Twilio ──
-                if stream_sid and audio_bytes:
-                    try:
-                        session.state_transition(AgentState.SPEAKING)
-                        session.audio_send_time = time.monotonic()
-                        session.audio_send_bytes = len(audio_bytes)
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "event": "media",
-                                    "streamSid": stream_sid,
-                                    "media": {
-                                        "payload": base64.b64encode(
-                                            audio_bytes
-                                        ).decode(),
-                                    },
-                                }
-                            )
-                        )
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "event": "mark",
-                                    "streamSid": stream_sid,
-                                    "mark": {
-                                        "name": f"agent_turn_{session.next_turn_index - 1}",
-                                    },
-                                }
-                            )
-                        )
-                        session.barge_in_cooldown_until = time.monotonic() + 0.5
-                        session.audio_bytes_sent_total += len(audio_bytes)
-                    except Exception:
-                        session.add_error(
-                            "twilio",
-                            "send_failed",
-                            f"Failed to send audio for turn {session.next_turn_index - 1}",
-                        )
-                        LOGGER.warning(
-                            "Failed to send audio to Twilio call_id=%s", call_id
-                        )
+                if agent_text:
+                    session.add_turn(
+                        TurnRole.AGENT,
+                        agent_text,
+                        tts_duration_ms=session.total_tts_ms,
+                    )
 
         try:
             async for transcript in realtime_stt_session(audio_queue):
-                last_speech_time[0] = time.monotonic()
-                silence_state["nudge_sent"] = False
+                if session.agent_state == AgentState.LISTENING:
+                    last_speech_time[0] = time.monotonic()
+                    silence_state["nudge_sent"] = False
+                    await event_bus.emit(
+                        CallEvent(call_id, "silence_timer_reset", {"reason": "user_speech"})
+                    )
 
                 if not transcript.strip():
                     continue
@@ -1006,6 +1097,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
                     except Exception:
                         pass
                     session.state_transition(AgentState.LISTENING)
+                    generation_counter[0] += 1
                     LOGGER.info(
                         "STT barge-in: user spoke during agent audio, call_id=%s",
                         call_id,
