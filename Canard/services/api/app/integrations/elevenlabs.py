@@ -163,6 +163,50 @@ async def text_to_speech(
     return audio_bytes
 
 
+async def text_to_speech_streaming(
+    text: str,
+    voice_id: str | None = None,
+    output_format: str = _TWILIO_OUTPUT_FORMAT,
+    call_id: str | None = None,
+) -> AsyncIterator[bytes]:
+    """
+    Stream TTS audio chunks as they arrive from ElevenLabs.
+
+    Same as text_to_speech() but yields each chunk instead of
+    collecting them into a single bytes object.
+    """
+    selected_voice_id = voice_id or settings.elevenlabs_voice_id
+
+    LOGGER.info(
+        "ElevenLabs TTS streaming: voice=%s model=%s format=%s text_len=%d",
+        selected_voice_id,
+        "eleven_flash_v2_5",
+        output_format,
+        len(text),
+    )
+
+    if call_id is not None:
+        await event_bus.emit(CallEvent(call_id, "tts_voice_used", {
+            "voice_id": selected_voice_id,
+            "model_id": "eleven_flash_v2_5",
+            "output_format": output_format,
+            "text_len": len(text),
+        }))
+
+    client = _client()
+
+    async for chunk in client.text_to_speech.convert(
+        voice_id=selected_voice_id,
+        text=text,
+        model_id="eleven_flash_v2_5",
+        output_format=output_format,
+        voice_settings=_PHONE_VOICE_SETTINGS,
+        optimize_streaming_latency=3,
+    ):
+        if isinstance(chunk, bytes):
+            yield chunk
+
+
 async def speech_to_text(
     audio_bytes: bytes,
     filename: str = "recording.wav",

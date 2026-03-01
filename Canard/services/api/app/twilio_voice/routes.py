@@ -30,6 +30,7 @@ from app.integrations.elevenlabs import (
     sanitize_for_tts,
     speech_to_text_from_url,
     text_to_speech,
+    text_to_speech_streaming,
 )
 from app.streaming.event_bus import CallEvent, event_bus
 from app.validation.scorer import EmployeeProfile, score_disclosure
@@ -901,6 +902,9 @@ async def twilio_stream(websocket: WebSocket) -> None:
                 first_byte_ms = 0.0
                 first_byte_sent = False
                 all_sentences: list[str] = []
+                tts_first_chunk_ms = 0.0
+                tts_first_chunk_sent = False
+                session.audio_send_bytes = 0
 
                 try:
                     async for sentence in run_turn_streaming(call_id, full_transcript):
@@ -917,46 +921,54 @@ async def twilio_stream(websocket: WebSocket) -> None:
                             )
                             break
 
-                        t0_tts = time.monotonic()
-                        audio_bytes = await text_to_speech(
-                            sanitize_for_tts(sentence), call_id=call_id
-                        )
-                        tts_ms = (time.monotonic() - t0_tts) * 1000
-                        session.total_tts_ms += tts_ms
                         all_sentences.append(sentence)
+                        t0_tts = time.monotonic()
+                        async for chunk in text_to_speech_streaming(
+                            sanitize_for_tts(sentence), call_id=call_id
+                        ):
+                            if my_generation_id != generation_counter[0]:
+                                break
+                            if not isinstance(chunk, bytes) or not chunk:
+                                continue
+                            tts_ms = (time.monotonic() - t0_tts) * 1000
+                            session.total_tts_ms += tts_ms
+                            t0_tts = time.monotonic()
 
-                        if stream_sid and audio_bytes:
-                            if not first_byte_sent:
-                                first_byte_ms = (time.monotonic() - t_start) * 1000
-                                first_byte_sent = True
-                            session.state_transition(AgentState.SPEAKING)
-                            session.audio_send_time = time.monotonic()
-                            session.audio_send_bytes = len(audio_bytes)
-                            try:
-                                await websocket.send_text(
-                                    json.dumps(
-                                        {
-                                            "event": "media",
-                                            "streamSid": stream_sid,
-                                            "media": {
-                                                "payload": base64.b64encode(
-                                                    audio_bytes
-                                                ).decode(),
-                                            },
-                                        }
+                            if stream_sid:
+                                if not first_byte_sent:
+                                    first_byte_ms = (time.monotonic() - t_start) * 1000
+                                    first_byte_sent = True
+                                if not tts_first_chunk_sent:
+                                    tts_first_chunk_ms = (time.monotonic() - t_start) * 1000
+                                    tts_first_chunk_sent = True
+                                session.state_transition(AgentState.SPEAKING)
+                                session.audio_send_time = time.monotonic()
+                                session.audio_send_bytes += len(chunk)
+                                try:
+                                    await websocket.send_text(
+                                        json.dumps(
+                                            {
+                                                "event": "media",
+                                                "streamSid": stream_sid,
+                                                "media": {
+                                                    "payload": base64.b64encode(
+                                                        chunk
+                                                    ).decode(),
+                                                },
+                                            }
+                                        )
                                     )
-                                )
-                                session.barge_in_cooldown_until = time.monotonic() + 0.5
-                                session.audio_bytes_sent_total += len(audio_bytes)
-                            except Exception:
-                                session.add_error(
-                                    "twilio",
-                                    "send_failed",
-                                    f"Failed to send audio for turn {session.next_turn_index - 1}",
-                                )
-                                LOGGER.warning(
-                                    "Failed to send audio to Twilio call_id=%s", call_id
-                                )
+                                    session.barge_in_cooldown_until = time.monotonic() + 0.5
+                                    session.audio_bytes_sent_total += len(chunk)
+                                except Exception:
+                                    session.add_error(
+                                        "twilio",
+                                        "send_failed",
+                                        f"Failed to send audio for turn {session.next_turn_index - 1}",
+                                    )
+                                    LOGGER.warning(
+                                        "Failed to send audio to Twilio call_id=%s", call_id
+                                    )
 
                         if my_generation_id != generation_counter[0]:
                             await event_bus.emit(
@@ -1062,6 +1074,9 @@ async def twilio_stream(websocket: WebSocket) -> None:
                         {
                             "first_byte_ms": round(
                                 first_byte_ms if first_byte_sent else 0, 1
+                            ),
+                            "tts_first_chunk_ms": round(
+                                tts_first_chunk_ms if tts_first_chunk_sent else 0, 1
                             ),
                             "tts_ms": round(session.total_tts_ms, 1),
                             "audio_bytes": session.audio_bytes_sent_total,
