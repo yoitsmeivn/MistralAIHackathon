@@ -1,4 +1,5 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate, Outlet, useNavigate } from "react-router";
+import { useEffect } from "react";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { Dashboard } from "./components/Dashboard";
 import { Campaigns } from "./components/Campaigns";
@@ -9,32 +10,85 @@ import { Calls } from "./components/Calls";
 import { NotFound } from "./components/NotFound";
 import { LoginPage } from "./components/LoginPage";
 import { CompanySignUp } from "./components/CompanySignUp";
-import { ManagerAccountCreation } from "./components/ManagerAccountCreation";
 import { CallMonitoring } from "./components/CallMonitoring";
+import { UserManagement } from "./components/UserManagement";
+import { AcceptInvite } from "./components/AcceptInvite";
 import { Analytics } from "./components/Analytics";
 import { EmployeeDetail } from "./components/EmployeeDetail";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+
+/** Root layout that wraps everything in AuthProvider */
+function RootLayout() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Supabase invite links redirect to site_url with hash fragments.
+    // Detect type=invite in the hash and redirect to /invite/accept.
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=invite")) {
+      navigate("/invite/accept" + hash, { replace: true });
+    }
+  }, [navigate]);
+
+  return (
+    <AuthProvider>
+      <Outlet />
+    </AuthProvider>
+  );
+}
+
+/** Redirects to /login if not authenticated */
+function ProtectedRoute() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-svh flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#252a39]" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Outlet />;
+}
 
 export const router = createBrowserRouter([
-  /* Auth pages — full-viewport, no dashboard shell */
-  { path: "/login", Component: LoginPage },
-  { path: "/signup", Component: CompanySignUp },
-  { path: "/create-account", Component: ManagerAccountCreation },
-
-  /* Dashboard shell */
   {
-    path: "/",
-    Component: DashboardLayout,
+    Component: RootLayout,
     children: [
-      { index: true, Component: Dashboard },
-      { path: "analytics", Component: Analytics },
-      { path: "campaigns", Component: Campaigns },
-      { path: "campaigns/:id", Component: CampaignDetail },
-      { path: "callers", Component: Callers },
-      { path: "employees", Component: Employees },
-      { path: "employees/:id", Component: EmployeeDetail },
-      { path: "calls", Component: Calls },
-      { path: "monitoring", Component: CallMonitoring },
-      { path: "*", Component: NotFound },
+      /* Auth pages — full-viewport, no dashboard shell */
+      { path: "/login", Component: LoginPage },
+      { path: "/signup", Component: CompanySignUp },
+      { path: "/invite/accept", Component: AcceptInvite },
+      { path: "/create-account", element: <Navigate to="/login" replace /> },
+
+      /* Protected dashboard routes */
+      {
+        Component: ProtectedRoute,
+        children: [
+          {
+            path: "/",
+            Component: DashboardLayout,
+            children: [
+              { index: true, Component: Dashboard },
+              { path: "analytics", Component: Analytics },
+              { path: "campaigns", Component: Campaigns },
+              { path: "campaigns/:id", Component: CampaignDetail },
+              { path: "callers", Component: Callers },
+              { path: "employees", Component: Employees },
+              { path: "employees/:id", Component: EmployeeDetail },
+              { path: "calls", Component: Calls },
+              { path: "monitoring", Component: CallMonitoring },
+              { path: "settings/users", Component: UserManagement },
+              { path: "*", Component: NotFound },
+            ],
+          },
+        ],
+      },
     ],
   },
 ]);

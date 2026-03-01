@@ -17,18 +17,33 @@ import type {
   DeptFlagPivotData,
   HierarchyRiskData,
 } from "../types";
-
-// Hardcoded org for hackathon demo
-const ORG_ID = "00000000-0000-0000-0000-000000000001";
+import { supabase } from "../lib/supabase";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-async function apiFetch<T>(path: string): Promise<T> {
-  const sep = path.includes("?") ? "&" : "?";
-  const url = `${path}${sep}org_id=${ORG_ID}`;
-  const res = await fetch(url);
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (token) {
+    return { Authorization: `Bearer ${token}` };
+  }
+  return {};
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(path, {
+    ...init,
+    headers: { ...authHeaders, ...init?.headers },
+  });
+  if (res.status === 401) {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
   if (!res.ok) {
-    throw new Error(`API error ${res.status}: ${res.statusText}`);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `API error ${res.status}: ${res.statusText}`);
   }
   return res.json() as Promise<T>;
 }
@@ -85,6 +100,46 @@ export async function getCalls(): Promise<Call[]> {
 
 export async function getCampaignCalls(campaignId: string): Promise<Call[]> {
   return apiFetch<Call[]>(`/api/calls/?campaign_id=${campaignId}`);
+}
+
+// ─── User Management ─────────────────────────────────────────────────
+
+export interface OrgUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export async function getOrgUsers(): Promise<OrgUser[]> {
+  return apiFetch<OrgUser[]>("/api/auth/users");
+}
+
+export async function createOrgUser(data: {
+  email: string;
+  full_name: string;
+}): Promise<OrgUser> {
+  return apiFetch<OrgUser>("/api/auth/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function transferAdmin(userId: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/api/auth/transfer-admin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target_user_id: userId }),
+  });
+}
+
+export async function deleteAccount(): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/api/auth/me", {
+    method: "DELETE",
+  });
 }
 
 // ─── Analytics ──────────────────────────────────────────────────────
