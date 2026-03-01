@@ -329,14 +329,9 @@ async def twilio_status(
 
         _update_call_safe(call_id, update_data)
 
-        # Fire post-call evaluation in the background
-        transcript_for_eval = update_data.get("transcript")
-        asyncio.create_task(
-            _run_evaluation_safe(
-                call_id,
-                transcript_for_eval if isinstance(transcript_for_eval, str) else None,
-            )
-        )
+        # NOTE: Evaluation is triggered from the websocket finally block
+        # (after transcript_json is persisted) to avoid a race condition
+        # where /status fires before the stream writes transcript data.
 
         # Clean up in-memory session
         remove_session(call_id)
@@ -1639,6 +1634,17 @@ async def twilio_stream(websocket: WebSocket) -> None:
             )
 
         _update_call_safe(call_id, call_update)
+
+        # Fire evaluation AFTER transcript_json is persisted to avoid
+        # race condition with /status webhook triggering evaluation
+        # before the stream has written transcript data.
+        transcript_text = call_update.get("transcript")
+        asyncio.create_task(
+            _run_evaluation_safe(
+                call_id,
+                transcript_text if isinstance(transcript_text, str) else None,
+            )
+        )
 
         summary = session.to_summary_dict()
         LOGGER.info(
