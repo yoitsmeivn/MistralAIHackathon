@@ -296,7 +296,7 @@ export function LandingPage() {
   }, []);
 
   return (
-    <div className="relative min-h-screen bg-background">
+    <div className="landing-page relative min-h-screen bg-background">
       {/* Skip-to-content */}
       <a href="#main" className="skip-to-content">
         Skip to content

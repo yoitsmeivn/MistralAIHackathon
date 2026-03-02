@@ -187,6 +187,15 @@
   }
 }
 
+/* ---- Landing page scoped theme overrides ---- */
+.landing-page {
+  --background: hsl(54 78% 94%);
+  --card: hsl(54 78% 94%);
+  --muted: hsl(54 50% 88%);
+  --accent: hsl(54 78% 88%);
+  --border: hsl(222 10% 82%);
+}
+
 /* ---- Landing page styles ---- */
 
 /* Skip-to-content link */
