@@ -43,7 +43,7 @@ const coreValueGains = [
     icon: Search,
     title: "Early Vulnerability Detection",
     description:
-      "Identify employees most likely to disclose sensitive information under pressure \u2014 before a real attacker does.",
+      "Identify employees most likely to disclose sensitive information under pressure — before a real attacker does.",
   },
   {
     icon: MessageSquareText,
@@ -92,7 +92,7 @@ const platformFeatures = [
     title: "AI Voice Simulations",
     subtitle: "Zero Human Effort",
     description:
-      "Advanced LLMs and voice synthesis hold dynamic, eerily realistic conversations. The AI adapts in real-time \u2014if the employee resists, it can escalate urgency or pivot tactics.",
+      "Advanced LLMs and voice synthesis hold dynamic, eerily realistic conversations. The AI adapts in real-time —if the employee resists, it can escalate urgency or pivot tactics.",
   },
   {
     icon: UserCog,
@@ -113,7 +113,7 @@ const platformFeatures = [
     title: "Real-Time Call Analytics",
     subtitle: "Risk Scoring",
     description:
-      "Every call is automatically transcribed and analyzed by AI. Employees receive a risk score (0\u2013100) with extracted flags like credential_disclosed or yielded_to_urgency.",
+      "Every call is automatically transcribed and analyzed by AI. Employees receive a risk score (0–100) with extracted flags like credential_disclosed or yielded_to_urgency.",
   },
   {
     icon: BookOpen,
@@ -157,9 +157,9 @@ const capabilityGroups = [
     title: "Campaign Generation & Execution",
     icon: Rocket,
     capabilities: [
-      "Build reusable attacker personas \u2014like an angry vendor or urgent IT caller \u2014for consistent, repeatable baseline tests across departments.",
+      "Build reusable attacker personas —like an angry vendor or urgent IT caller —for consistent, repeatable baseline tests across departments.",
       'Launch targeted phishing campaigns with pre-built scripts such as "Wire Transfer Fraud" or "Helpdesk Reset" to measure specific vulnerabilities.',
-      "Fully automated AI-driven calls that hold realistic, human-like conversations \u2014no red-team actors or manual dialing required.",
+      "Fully automated AI-driven calls that hold realistic, human-like conversations —no red-team actors or manual dialing required.",
     ],
   },
   {
@@ -169,14 +169,14 @@ const capabilityGroups = [
       "Company-wide aggregate risk scoring to track your human-risk posture quarter-over-quarter at a glance.",
       "Granular flag breakdowns (e.g., credential disclosed, no identity verification, yielded to urgency) across every campaign for targeted training.",
       "Repeat offender identification to surface employees who consistently fail, enabling focused 1-on-1 coaching interventions.",
-      "Time-of-day heatmaps showing when employees are most susceptible \u2014so you can proactively warn staff during high-risk windows.",
+      "Time-of-day heatmaps showing when employees are most susceptible —so you can proactively warn staff during high-risk windows.",
     ],
   },
   {
     title: "Employee Coaching",
     icon: BookOpen,
     capabilities: [
-      "AI-generated call summaries that distill a 5-minute failed call into a concise, actionable breakdown \u2014no need to listen to full recordings.",
+      "AI-generated call summaries that distill a 5-minute failed call into a concise, actionable breakdown —no need to listen to full recordings.",
       'Constructive, non-punitive coaching notes that teach employees to recognize manipulation tactics rather than simply flagging a failure.',
     ],
   },
@@ -529,7 +529,7 @@ export function LandingPage() {
         <SectionHeading
           tag="For Security Leaders"
           title="What Your Company Gains"
-          subtitle="Actionable intelligence, scale, and compliance \u2014 all from one platform."
+          subtitle="Actionable intelligence, scale, and compliance — all from one platform."
         />
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -579,7 +579,7 @@ export function LandingPage() {
         <SectionHeading
           tag="Platform"
           title="Core Platform Features"
-          subtitle="Everything you need to simulate, analyze, and coach \u2014powered by AI."
+          subtitle="Everything you need to simulate, analyze, and coach —powered by AI."
         />
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
